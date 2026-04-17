@@ -1,0 +1,4 @@
+node_modules/
+bin/wt
+.bun/
+*.bun-build
