@@ -75,5 +75,5 @@ info "installed: $INSTALL_DIR/$BIN_NAME"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
-  *) printf '\nnote: %s is not on your PATH. add this to your shell rc:\n    export PATH="%s:$PATH"\n' "$INSTALL_DIR" "$INSTALL_DIR" ;;
+  *) printf '\nnote: %s is not on your PATH. add this to your shell rc:\n    export PATH="%s:%s"\n' "$INSTALL_DIR" "$INSTALL_DIR" '$PATH' ;;
 esac

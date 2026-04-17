@@ -71,6 +71,7 @@ jobs:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           npx --yes release-please@latest release-pr \
+            --token="$GITHUB_TOKEN" \
             --repo-url=johnpangalos/wt \
             --config-file=release-please-config.json \
             --manifest-file=.release-please-manifest.json \
