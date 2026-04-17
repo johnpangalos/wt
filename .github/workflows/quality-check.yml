@@ -1,0 +1,78 @@
+name: quality-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
+
+  distribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Lint install.sh
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck install.sh
+          sh -n install.sh
+
+      - name: Cross-compile darwin-arm64
+        run: bun build src/cli.ts --compile --minify --target=bun-darwin-arm64 --outfile dist/wt-darwin-arm64
+
+      - name: Cross-compile linux-x64
+        run: bun build src/cli.ts --compile --minify --target=bun-linux-x64 --outfile dist/wt-linux-x64
+
+      - name: Validate binary formats
+        run: |
+          file dist/wt-darwin-arm64 | grep -q 'Mach-O'
+          file dist/wt-linux-x64    | grep -q 'ELF'
+
+      - name: install.sh end-to-end (local mock release)
+        run: |
+          mkdir -p /tmp/fake-release
+          cp dist/wt-darwin-arm64 dist/wt-linux-x64 /tmp/fake-release/
+          ( cd /tmp/fake-release && sha256sum wt-darwin-arm64 wt-linux-x64 > SHA256SUMS )
+          ( cd /tmp/fake-release && python3 -m http.server 8787 ) &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for _ in 1 2 3 4 5; do curl -fsS http://localhost:8787/SHA256SUMS && break; sleep 1; done
+
+          sed 's|^base=.*|base="http://localhost:8787"|' install.sh > /tmp/install-patched.sh
+          WT_VERSION=test PREFIX=/tmp/wt-install sh /tmp/install-patched.sh
+          /tmp/wt-install/bin/wt --help
+
+  release-please-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: release-please dry-run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          npx --yes release-please@latest release-pr \
+            --repo-url=johnpangalos/wt \
+            --config-file=release-please-config.json \
+            --manifest-file=.release-please-manifest.json \
+            --target-branch="$BRANCH" \
+            --dry-run --debug
