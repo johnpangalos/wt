@@ -1,6 +1,6 @@
 {
   "name": "wt",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Pick and switch git worktrees from the shell. Opens each worktree in a new tmux/zellij window.",
   "bin": {
     "wt": "./bin/wt"
