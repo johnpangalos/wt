@@ -6,11 +6,28 @@ Designed for workflows that create worktrees elsewhere (Claude Code, scripts, an
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.2+ (only to build; the compiled binary has no runtime dep)
 - `git`
 - `tmux` or `zellij`
 
 ## Install
+
+macOS (Apple Silicon) and Linux (x64):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh | sh
+```
+
+Installs to `~/.local/bin/wt`. Override with `PREFIX=/usr/local` or pin a version with `WT_VERSION=v0.1.0`.
+
+On first run, macOS may quarantine the unsigned binary. Clear it with:
+
+```sh
+xattr -d com.apple.quarantine ~/.local/bin/wt
+```
+
+## Build from source
+
+Requires [Bun](https://bun.sh) 1.2+ (only to build; the compiled binary has no runtime dep).
 
 ```sh
 git clone https://github.com/johnpangalos/wt.git
@@ -90,3 +107,14 @@ bun run typecheck      # tsc --noEmit
 ```
 
 Tests use real git repos in `$TMPDIR` and fake `tmux`/`zellij` binaries on `$PATH` that log their argv — no mocks of our own code.
+
+## Releases
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please). Commits to `main` must follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat: ...` — minor bump (while pre-1.0; major after 1.0)
+- `fix: ...` — patch bump
+- `feat!: ...` or a `BREAKING CHANGE:` footer — major bump
+- `chore:`, `docs:`, `refactor:`, `test:`, `ci:`, `build:`, `perf:` — no bump; may appear in the changelog
+
+release-please opens a `chore(main): release X.Y.Z` PR that bumps `package.json` and updates `CHANGELOG.md`. Merging that PR tags the release and the binary-upload workflow publishes `wt-darwin-arm64`, `wt-linux-x64`, and `SHA256SUMS` to the GitHub Release.
