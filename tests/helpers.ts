@@ -129,6 +129,8 @@ export async function runCli(
   for (const [k, v] of Object.entries(base)) {
     if (v !== undefined) env[k] = v;
   }
+  // Tests must not spawn the background update-check child or hit GitHub.
+  if (env.WT_NO_UPDATE_CHECK === undefined) env.WT_NO_UPDATE_CHECK = "1";
   const proc = Bun.spawn([binPath, ...args], {
     cwd: opts.cwd,
     env,
