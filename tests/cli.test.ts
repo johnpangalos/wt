@@ -433,13 +433,13 @@ describe("cli: version and update", () => {
   it("wt --version prints the package version", async () => {
     const r = await runCli(BIN, ["--version"]);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe(`wt v${pkg.version}`);
+    expect(r.stdout.trim()).toBe(`v${pkg.version}`);
   });
 
   it("wt version (no dashes) also works", async () => {
     const r = await runCli(BIN, ["version"]);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe(`wt v${pkg.version}`);
+    expect(r.stdout.trim()).toBe(`v${pkg.version}`);
   });
 
   it("nag prints to stderr when cache reports a newer version", async () => {

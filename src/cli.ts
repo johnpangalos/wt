@@ -195,7 +195,7 @@ async function main(): Promise<void> {
     case "-v":
     case "--version":
     case "version":
-      process.stdout.write(`wt v${VERSION}\n`);
+      process.stdout.write(`v${VERSION}\n`);
       return;
     case "list":
       return cmdList(argv.slice(1), env);
