@@ -14,14 +14,13 @@ export const VERSION: string = pkg.version;
 
 const REPO = "johnpangalos/wt";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const INSTALL_URL = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
 
 export type UpdateEnv = {
   HOME?: string;
   XDG_STATE_HOME?: string;
   WT_NO_UPDATE_CHECK?: string;
-  WT_GITHUB_API?: string;
 };
 
 function cachePath(env: UpdateEnv): string | null {
@@ -70,11 +69,8 @@ export function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-async function fetchLatestTag(env: UpdateEnv): Promise<string> {
-  const url = env.WT_GITHUB_API && env.WT_GITHUB_API.length > 0
-    ? env.WT_GITHUB_API
-    : DEFAULT_API;
-  const res = await fetch(url, {
+async function fetchLatestTag(): Promise<string> {
+  const res = await fetch(LATEST_RELEASE_URL, {
     headers: { "User-Agent": `wt/${VERSION}`, Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`github api: ${res.status}`);
@@ -88,7 +84,7 @@ async function fetchLatestTag(env: UpdateEnv): Promise<string> {
 export async function refreshCache(env: UpdateEnv): Promise<void> {
   const p = cachePath(env);
   if (!p) return;
-  const tag = await fetchLatestTag(env);
+  const tag = await fetchLatestTag();
   writeCache(p, { ts: Date.now(), tag });
 }
 
@@ -142,7 +138,7 @@ function promptYes(): boolean {
 export async function cmdUpdate(env: UpdateEnv): Promise<number> {
   let tag: string;
   try {
-    tag = await fetchLatestTag(env);
+    tag = await fetchLatestTag();
   } catch (e) {
     process.stderr.write(
       `wt: update check failed: ${(e as Error).message}\n`,

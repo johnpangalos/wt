@@ -430,13 +430,6 @@ describe("cli: current", () => {
 });
 
 describe("cli: version and update", () => {
-  function fakeRelease(tag: string): string {
-    const dir = mkdtempSync(join(tmpdir(), "wt-release-"));
-    const file = join(dir, "release.json");
-    writeFileSync(file, JSON.stringify({ tag_name: tag }));
-    return `file://${file}`;
-  }
-
   it("wt --version prints the package version", async () => {
     const r = await runCli(BIN, ["--version"]);
     expect(r.exitCode).toBe(0);
@@ -447,21 +440,6 @@ describe("cli: version and update", () => {
     const r = await runCli(BIN, ["version"]);
     expect(r.exitCode).toBe(0);
     expect(r.stdout.trim()).toBe(`wt v${pkg.version}`);
-  });
-
-  it("wt update exits 0 when already on the latest release", async () => {
-    const stateDir = mkdtempSync(join(tmpdir(), "wt-state-"));
-    const r = await runCli(BIN, ["update"], {
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: process.env.HOME ?? "",
-        XDG_STATE_HOME: stateDir,
-        WT_NO_UPDATE_CHECK: "1",
-        WT_GITHUB_API: fakeRelease(`v${pkg.version}`),
-      },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toMatch(/up to date/);
   });
 
   it("nag prints to stderr when cache reports a newer version", async () => {
