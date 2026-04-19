@@ -1,13 +1,8 @@
-import {
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-  openSync,
-  closeSync,
-  readSync,
-  writeSync,
-} from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isatty } from "node:tty";
+import { createInterface } from "node:readline/promises";
+import { $ } from "bun";
 import pkg from "../package.json";
 
 export const VERSION: string = pkg.version;
@@ -113,25 +108,15 @@ export function maybeNag(env: UpdateEnv): void {
   }
 }
 
-function promptYes(): boolean {
-  let fd: number | null = null;
+async function promptYes(): Promise<boolean> {
+  if (!isatty(0) || !isatty(1)) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    fd = openSync("/dev/tty", "r+");
-    writeSync(fd, "install? [y/N] ");
-    const buf = Buffer.alloc(128);
-    const n = readSync(fd, buf, 0, buf.length, null);
-    const answer = buf.slice(0, n).toString("utf8").trim().toLowerCase();
-    return answer === "y" || answer === "yes";
-  } catch {
-    return false;
+    const answer = await rl.question("install? [y/N] ");
+    const trimmed = answer.trim().toLowerCase();
+    return trimmed === "y" || trimmed === "yes";
   } finally {
-    if (fd !== null) {
-      try {
-        closeSync(fd);
-      } catch {
-        // ignore
-      }
-    }
+    rl.close();
   }
 }
 
@@ -160,23 +145,17 @@ export async function cmdUpdate(env: UpdateEnv): Promise<number> {
     return 0;
   }
   process.stdout.write(`wt v${VERSION} → v${latest}\n`);
-  if (!promptYes()) {
+  if (!(await promptYes())) {
     process.stdout.write("aborted.\n");
     return 0;
   }
 
   const binDir = dirname(process.execPath);
   const prefix = dirname(binDir);
-  const result = Bun.spawnSync(
-    ["sh", "-c", `curl -fsSL "${INSTALL_URL}" | sh`],
-    {
-      env: { ...(process.env as Record<string, string>), PREFIX: prefix },
-      stdin: "ignore",
-      stdout: "inherit",
-      stderr: "inherit",
-    },
-  );
-  const code = result.exitCode ?? 1;
+  const result = await $`curl -fsSL ${INSTALL_URL} | sh`
+    .env({ ...(process.env as Record<string, string>), PREFIX: prefix })
+    .nothrow();
+  const code = result.exitCode;
   if (code === 0) {
     const p = cachePath(env);
     if (p) {
