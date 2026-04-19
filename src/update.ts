@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { isatty } from "node:tty";
+import { ReadStream, WriteStream } from "node:tty";
 import { createInterface } from "node:readline/promises";
 import { $ } from "bun";
 import pkg from "../package.json";
@@ -109,14 +109,25 @@ export function maybeNag(env: UpdateEnv): void {
 }
 
 async function promptYes(): Promise<boolean> {
-  if (!isatty(0) || !isatty(1)) return false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  let input: ReadStream | null = null;
+  let output: WriteStream | null = null;
+  try {
+    input = new ReadStream(openSync("/dev/tty", "r"));
+    output = new WriteStream(openSync("/dev/tty", "w"));
+  } catch {
+    input?.destroy();
+    output?.destroy();
+    return false;
+  }
+  const rl = createInterface({ input, output });
   try {
     const answer = await rl.question("install? [y/N] ");
     const trimmed = answer.trim().toLowerCase();
     return trimmed === "y" || trimmed === "yes";
   } finally {
     rl.close();
+    input.destroy();
+    output.destroy();
   }
 }
 
