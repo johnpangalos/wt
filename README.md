@@ -48,8 +48,22 @@ wt switch feature-x     # open the feature-x worktree in a new mux window
 wt switch /path/to/wt   # same, by path
 wt root                 # open the main (root) worktree in a new mux window
 wt current              # print the worktree containing $PWD
+wt update               # check GitHub for a new release and install it
+wt --version            # print the installed version
 wt --help               # usage
 ```
+
+## Updating
+
+`wt update` checks the GitHub releases API for a newer version. If one exists, it prints `wt vCURRENT → vLATEST` and prompts for confirmation before re-running `install.sh` with the same `PREFIX` the current binary was installed under.
+
+To reduce friction, `wt` also runs a throttled background check (once per day) on every invocation and prints a single-line hint to stderr when a newer release is available:
+
+```
+wt: update available (0.1.0 → 0.2.0) — run: wt update
+```
+
+The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt/update-check`). Set `WT_NO_UPDATE_CHECK=1` to disable the background check entirely.
 
 ## Configuration (env vars)
 
@@ -61,6 +75,7 @@ wt --help               # usage
 | `WT_TMUX_TARGET` | — | tmux session to target when `$TMUX` is unset (e.g. `0`). |
 | `WT_TMUX_SOCKET` | — | tmux socket (`-S`), for non-default sockets. |
 | `WT_ZELLIJ_SESSION` | — | zellij session to target when `$ZELLIJ` is unset. |
+| `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
 
 ## Running from outside a mux (auto-spawn + cache)
 

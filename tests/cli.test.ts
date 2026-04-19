@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterEach } from "bun:test";
 import { join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { makeRepo, addWorktree, fakeBin, readLog, runCli, cleanRepo } from "./helpers";
+import pkg from "../package.json";
 
 const BIN = resolve(import.meta.dir, "..", "bin", "wt");
 
@@ -424,5 +426,61 @@ describe("cli: current", () => {
     const r = await runCli(BIN, ["current"], { cwd: feat });
     expect(r.exitCode).toBe(0);
     expect(r.stdout.trim()).toBe(feat);
+  });
+});
+
+describe("cli: version and update", () => {
+  it("wt --version prints the package version", async () => {
+    const r = await runCli(BIN, ["--version"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe(`v${pkg.version}`);
+  });
+
+  it("wt version (no dashes) also works", async () => {
+    const r = await runCli(BIN, ["version"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe(`v${pkg.version}`);
+  });
+
+  it("nag prints to stderr when cache reports a newer version", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "wt-state-"));
+    mkdirSync(join(stateDir, "wt"), { recursive: true });
+    const [major = "0", minor = "0", patch = "0"] = pkg.version.split(".");
+    const bumped = `v${major}.${minor}.${Number(patch) + 1}`;
+    writeFileSync(
+      join(stateDir, "wt", "update-check"),
+      `${Date.now()}\t${bumped}\n`,
+    );
+    const r = await runCli(BIN, ["--help"], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+        XDG_STATE_HOME: stateDir,
+        // Do NOT pass WT_NO_UPDATE_CHECK — we want the nag to run.
+        WT_NO_UPDATE_CHECK: "",
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toMatch(/update available/);
+    expect(r.stderr).toContain(bumped.slice(1));
+  });
+
+  it("nag stays silent when cache reports the current version", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "wt-state-"));
+    mkdirSync(join(stateDir, "wt"), { recursive: true });
+    writeFileSync(
+      join(stateDir, "wt", "update-check"),
+      `${Date.now()}\tv${pkg.version}\n`,
+    );
+    const r = await runCli(BIN, ["--help"], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+        XDG_STATE_HOME: stateDir,
+        WT_NO_UPDATE_CHECK: "",
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toBe("");
   });
 });

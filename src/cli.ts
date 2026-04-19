@@ -11,6 +11,7 @@ import {
   type ZellijPlacement,
 } from "./mux";
 import { resolveMuxTarget } from "./session";
+import { VERSION, cmdUpdate, maybeNag, refreshCache } from "./update";
 
 const USAGE = `wt — worktree helper
 
@@ -19,6 +20,8 @@ Usage:
   wt switch <branch|path>   open a worktree in a new tmux/zellij window
   wt root                   open the main (root) worktree in a new mux window
   wt current                print the path of the worktree containing $PWD
+  wt update                 check for a new release and install it
+  wt --version              print the installed wt version
   wt --help                 show this help
 
 Environment:
@@ -28,6 +31,7 @@ Environment:
   WT_TMUX_TARGET      tmux session to target when $TMUX is unset (e.g. "0")
   WT_TMUX_SOCKET      full path of tmux socket (-S), for non-default sockets
   WT_ZELLIJ_SESSION   zellij session to target when $ZELLIJ is unset
+  WT_NO_UPDATE_CHECK  set to any value to disable the background update check
 `;
 
 function die(msg: string): never {
@@ -167,6 +171,17 @@ async function main(): Promise<void> {
   const env: Env = process.env as Env;
   const sub = argv[0];
 
+  if (sub === "__refresh-update-cache") {
+    try {
+      await refreshCache(env);
+    } catch {
+      // silent — background best-effort
+    }
+    return;
+  }
+
+  if (sub !== "update") maybeNag(env);
+
   switch (sub) {
     case undefined:
     case "":
@@ -177,6 +192,11 @@ async function main(): Promise<void> {
     case "help":
       process.stdout.write(USAGE);
       return;
+    case "-v":
+    case "--version":
+    case "version":
+      process.stdout.write(`v${VERSION}\n`);
+      return;
     case "list":
       return cmdList(argv.slice(1), env);
     case "switch":
@@ -185,6 +205,10 @@ async function main(): Promise<void> {
       return cmdRoot(argv.slice(1), env);
     case "current":
       return cmdCurrent(argv.slice(1), env);
+    case "update": {
+      const code = await cmdUpdate(env);
+      process.exit(code);
+    }
     default:
       die(`unknown command: ${sub} (try: wt --help)`);
   }
