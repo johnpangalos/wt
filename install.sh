@@ -36,7 +36,11 @@ case "$os-$arch" in
 esac
 
 if [ -n "${WT_VERSION:-}" ]; then
-  tag="$WT_VERSION"
+  # Releases are tagged "wt-vX.Y.Z" (release-please component prefix).
+  # Accept v0.1.0, 0.1.0, or wt-v0.1.0 and normalize to the real tag.
+  ver="${WT_VERSION#wt-}"   # strip optional "wt-" prefix
+  ver="${ver#v}"           # strip optional "v" prefix
+  tag="wt-v$ver"
 else
   info "resolving latest wt release..."
   tag="$($DL "https://api.github.com/repos/$REPO/releases/latest" \
