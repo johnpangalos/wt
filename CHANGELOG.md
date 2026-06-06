@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/johnpangalos/wt/compare/wt-v0.2.0...wt-v0.3.0) (2026-06-06)
+
+
+### Features
+
+* agent-aware wt list ([#20](https://github.com/johnpangalos/wt/issues/20)) ([895fc14](https://github.com/johnpangalos/wt/commit/895fc148b0df3172f9e6aea788e1ab1d4e21856f))
+
 ## [0.2.0](https://github.com/johnpangalos/wt/compare/wt-v0.1.0...wt-v0.2.0) (2026-06-05)
 
 
