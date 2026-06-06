@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { listWorktrees, repoRoot } from "./git";
+import { listAgents, matchAgents, type AgentSession } from "./agents";
 import type { Worktree } from "./types";
 import {
   buildTmuxCmd,
@@ -16,7 +17,7 @@ import { VERSION, cmdUpdate, maybeNag, refreshCache } from "./update";
 const USAGE = `wt — worktree helper
 
 Usage:
-  wt list [--json]          list worktrees for the current repo
+  wt list [--json]          list worktrees (annotates Claude Code agent sessions)
   wt switch <branch|path>   open a worktree in a new tmux/zellij window
   wt root                   open the main (root) worktree in a new mux window
   wt current                print the path of the worktree containing $PWD
@@ -47,12 +48,22 @@ function displayBranch(w: Worktree): string {
   return w.branch;
 }
 
-function flags(w: Worktree): string {
+function flags(w: Worktree, agent?: AgentSession): string {
   const f: string[] = [];
+  if (agent) f.push("agent");
   if (w.detached) f.push("detached");
   if (w.bare) f.push("bare");
   if (w.locked) f.push("locked");
   return f.join(",");
+}
+
+/** Human-readable status for an agent row, folding in `waitingFor` when set. */
+function agentStatus(agent: AgentSession): string {
+  const status = agent.status ?? "";
+  if (agent.waitingFor) {
+    return status ? `${status} (${agent.waitingFor})` : agent.waitingFor;
+  }
+  return status;
 }
 
 function resolveCmd(env: Env): string {
@@ -85,16 +96,30 @@ async function getWorktrees(env: Env): Promise<Worktree[]> {
 async function cmdList(args: string[], env: Env): Promise<void> {
   const json = args.includes("--json");
   const entries = await getWorktrees(env);
+  const agentMap = matchAgents(entries, await listAgents(env));
   if (json) {
-    const obj = entries.map((w) => ({
-      path: w.path,
-      branch: displayBranch(w),
-      flags: flags(w),
-    }));
+    const obj = entries.map((w) => {
+      const agent = agentMap.get(w.path);
+      const row: Record<string, unknown> = {
+        path: w.path,
+        branch: displayBranch(w),
+        flags: flags(w, agent),
+      };
+      if (agent) {
+        if (agent.sessionId !== undefined) row.sessionId = agent.sessionId;
+        if (agent.name !== undefined) row.name = agent.name;
+        if (agent.status !== undefined) row.status = agent.status;
+        if (agent.waitingFor !== undefined) row.waitingFor = agent.waitingFor;
+      }
+      return row;
+    });
     process.stdout.write(JSON.stringify(obj) + "\n");
   } else {
     for (const w of entries) {
-      process.stdout.write(`${w.path}\t${displayBranch(w)}\t${flags(w)}\n`);
+      const agent = agentMap.get(w.path);
+      let line = `${w.path}\t${displayBranch(w)}\t${flags(w, agent)}`;
+      if (agent) line += `\t${agent.name ?? ""}\t${agentStatus(agent)}`;
+      process.stdout.write(line + "\n");
     }
   }
 }

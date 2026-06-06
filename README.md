@@ -53,6 +53,22 @@ wt --version            # print the installed version
 wt --help               # usage
 ```
 
+## Agent-aware listing
+
+If [Claude Code](https://code.claude.com/docs/en/agent-view) is installed, `wt
+list` joins `git worktree list` with `claude agents --json` on `path == cwd` and
+annotates worktrees that belong to a background agent session. Agent rows gain an
+`agent` flag plus two trailing columns — the session **name** and **status**
+(with `waitingFor` folded in, e.g. `waiting (permission prompt)`):
+
+```
+/repo/.claude/worktrees/abc   feat-x   agent   brave-otter   waiting (permission prompt)
+```
+
+`wt list --json` adds `sessionId`, `name`, `status`, and `waitingFor` to those
+rows when present. This is best-effort: if Claude Code isn't installed or no
+agents are running, output is unchanged.
+
 ## Updating
 
 `wt update` checks the GitHub releases API for a newer version. If one exists, it prints `wt vCURRENT → vLATEST` and prompts for confirmation before re-running `install.sh` with the same `PREFIX` the current binary was installed under.
@@ -116,7 +132,7 @@ A new tmux window pops open with your editor at the worktree's path — alt-tab 
 ```sh
 bun install
 bun run build          # produces bin/wt
-bun test               # build + run all tests (45 tests)
+bun test               # build + run all tests (77 tests)
 bun run test:fast      # run tests against the last-built binary
 bun run typecheck      # tsc --noEmit
 ```

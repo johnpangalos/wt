@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-import { makeRepo, addWorktree, fakeBin, readLog, runCli, cleanRepo } from "./helpers";
+import { makeRepo, addWorktree, fakeBin, fakeClaudeBin, readLog, runCli, cleanRepo } from "./helpers";
 import pkg from "../package.json";
 
 const BIN = resolve(import.meta.dir, "..", "bin", "wt");
@@ -67,6 +67,110 @@ describe("cli: help and list", () => {
     expect(data[0]).toHaveProperty("path");
     expect(data[0]).toHaveProperty("branch");
     expect(data.map((x: { branch: string }) => x.branch).sort()).toEqual(["feat", "main"]);
+  });
+});
+
+describe("cli: agent-aware list", () => {
+  const repos: string[] = [];
+  afterEach(() => {
+    while (repos.length) {
+      const r = repos.pop();
+      if (r) cleanRepo(r);
+    }
+  });
+
+  it("annotates an agent-owned worktree with name and status", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["tmux"]);
+    fakeClaudeBin(
+      fake.dir,
+      JSON.stringify([
+        { cwd: feat, sessionId: "sess-1", name: "brave-otter", status: "working" },
+      ]),
+    );
+    const r = await runCli(BIN, ["list"], { cwd: repo, env: baseEnv(fake) });
+    expect(r.exitCode).toBe(0);
+    const featRow = r.stdout.split("\n").find((l) => l.startsWith(feat));
+    expect(featRow).toBeDefined();
+    const cols = featRow!.split("\t");
+    expect(cols[2]).toContain("agent");
+    expect(cols[3]).toBe("brave-otter");
+    expect(cols[4]).toBe("working");
+    // the non-agent main row is untouched (no extra columns)
+    const mainRow = r.stdout.split("\n").find((l) => l.startsWith(repo + "\t"));
+    expect(mainRow!.split("\t").length).toBe(3);
+  });
+
+  it("folds waitingFor into the human-readable status", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["tmux"]);
+    fakeClaudeBin(
+      fake.dir,
+      JSON.stringify([
+        { cwd: feat, name: "n", status: "waiting", waitingFor: "permission prompt" },
+      ]),
+    );
+    const r = await runCli(BIN, ["list"], { cwd: repo, env: baseEnv(fake) });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("waiting (permission prompt)");
+  });
+
+  it("list --json includes sessionId, name, status, and waitingFor", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["tmux"]);
+    fakeClaudeBin(
+      fake.dir,
+      JSON.stringify([
+        {
+          cwd: feat,
+          sessionId: "sess-1",
+          name: "brave-otter",
+          status: "waiting",
+          waitingFor: "input needed",
+        },
+      ]),
+    );
+    const r = await runCli(BIN, ["list", "--json"], { cwd: repo, env: baseEnv(fake) });
+    expect(r.exitCode).toBe(0);
+    const data = JSON.parse(r.stdout) as Array<Record<string, unknown>>;
+    const featObj = data.find((o) => o.path === feat)!;
+    expect(featObj.flags).toContain("agent");
+    expect(featObj.sessionId).toBe("sess-1");
+    expect(featObj.name).toBe("brave-otter");
+    expect(featObj.status).toBe("waiting");
+    expect(featObj.waitingFor).toBe("input needed");
+    // non-agent main row carries none of the agent keys
+    const mainObj = data.find((o) => o.path === repo)!;
+    expect(mainObj).not.toHaveProperty("sessionId");
+    expect(mainObj).not.toHaveProperty("name");
+    expect(mainObj.flags).not.toContain("agent");
+  });
+
+  it("leaves rows unaffected when no agent cwd matches a worktree", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["tmux"]);
+    fakeClaudeBin(
+      fake.dir,
+      JSON.stringify([{ cwd: "/somewhere/else", name: "ghost", status: "working" }]),
+    );
+    const r = await runCli(BIN, ["list"], { cwd: repo, env: baseEnv(fake) });
+    expect(r.exitCode).toBe(0);
+    for (const line of r.stdout.split("\n").filter(Boolean)) {
+      expect(line.split("\t").length).toBe(3);
+      expect(line).not.toContain("ghost");
+    }
   });
 });
 
