@@ -109,6 +109,26 @@ export function fakeBin(names: string[]): FakeBin {
   return { dir, log, state };
 }
 
+/**
+ * Drop a fake `claude` into `dir` that prints `agentsJson` for `claude agents
+ * --json` (and exits 0 for anything else). Lets tests exercise the
+ * worktree↔agent join without a real Claude Code install.
+ */
+export function fakeClaudeBin(dir: string, agentsJson: string): void {
+  const path = join(dir, "claude");
+  const script = `#!/bin/sh
+if [ "$1" = "agents" ]; then
+  cat <<'WT_AGENTS_EOF'
+${agentsJson}
+WT_AGENTS_EOF
+  exit 0
+fi
+exit 0
+`;
+  writeFileSync(path, script);
+  chmodSync(path, 0o755);
+}
+
 export function readLog(log: string): string {
   try {
     return require("node:fs").readFileSync(log, "utf8") as string;
