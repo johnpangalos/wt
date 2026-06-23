@@ -84,7 +84,7 @@ describe("cli: agent-aware list", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin([]);
     fakeClaudeBin(
       fake.dir,
       JSON.stringify([
@@ -109,7 +109,7 @@ describe("cli: agent-aware list", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin([]);
     fakeClaudeBin(
       fake.dir,
       JSON.stringify([
@@ -126,7 +126,7 @@ describe("cli: agent-aware list", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin([]);
     fakeClaudeBin(
       fake.dir,
       JSON.stringify([
@@ -160,7 +160,7 @@ describe("cli: agent-aware list", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin([]);
     fakeClaudeBin(
       fake.dir,
       JSON.stringify([{ cwd: "/somewhere/else", name: "ghost", status: "working" }]),
@@ -183,20 +183,22 @@ describe("cli: switch", () => {
     }
   });
 
-  it("switch <branch> invokes tmux with the worktree path", async () => {
+  it("switch <branch> drives Ghostty (osascript) with the worktree path", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux", "zellij"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), TMUX: "fake" },
+      env: baseEnv(fake),
     });
     expect(r.exitCode).toBe(0);
     const log = readLog(fake.log);
-    expect(log).toContain(feat);
-    expect(log).toMatch(/^tmux /);
+    expect(log).toMatch(/^osascript /);
+    expect(log).toContain('tell application "Ghostty"');
+    expect(log).toContain(`set initial working directory of cfg to "${feat}"`);
+    expect(log).toContain("new window with configuration cfg");
   });
 
   it("switch by absolute path resolves to the worktree", async () => {
@@ -204,155 +206,67 @@ describe("cli: switch", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux", "zellij"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", feat], {
       cwd: repo,
-      env: { ...baseEnv(fake), TMUX: "fake" },
+      env: baseEnv(fake),
     });
     expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toContain(feat);
+    expect(readLog(fake.log)).toContain(feat);
   });
 
   it("switch <nonexistent> exits non-zero", async () => {
     const repo = makeRepo();
     repos.push(repo);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "nope-missing"], {
       cwd: repo,
-      env: { ...baseEnv(fake), TMUX: "fake" },
+      env: baseEnv(fake),
     });
     expect(r.exitCode).not.toBe(0);
     expect(r.stderr + r.stdout).toMatch(/nope-missing|not found/);
   });
 
-  it("prefers zellij when only $ZELLIJ is set", async () => {
+  it("WT_GHOSTTY_PLACEMENT=new-tab opens a tab", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux", "zellij"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), ZELLIJ: "0" },
+      env: { ...baseEnv(fake), WT_GHOSTTY_PLACEMENT: "new-tab" },
     });
     expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toMatch(/^zellij /);
+    expect(readLog(fake.log)).toContain("new tab with configuration cfg");
   });
 
-  it("auto-spawns a 'wt' tmux session when no mux is detected", async () => {
+  it("WT_GHOSTTY_PLACEMENT=split-right splits the front window", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: baseEnv(fake),
+      env: { ...baseEnv(fake), WT_GHOSTTY_PLACEMENT: "split-right" },
     });
     expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toMatch(/new-session -d -s wt/);
-    expect(log).toMatch(/new-window -t wt:/);
-    expect(log).toContain(feat);
+    expect(readLog(fake.log)).toContain("direction right");
   });
 
-  it("uses WT_TMUX_TARGET when $TMUX is unset", async () => {
+  it("unknown WT_GHOSTTY_PLACEMENT exits non-zero", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), WT_TMUX_TARGET: "my-sess" },
+      env: { ...baseEnv(fake), WT_GHOSTTY_PLACEMENT: "bogus" },
     });
-    expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toContain(feat);
-    expect(log).toMatch(/-t my-sess:/);
-  });
-
-  it("passes WT_TMUX_SOCKET via -S", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: {
-        ...baseEnv(fake),
-        WT_TMUX_TARGET: "0",
-        WT_TMUX_SOCKET: "/tmp/wt-sock",
-      },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toMatch(/-S \/tmp\/wt-sock/);
-  });
-
-  it("normalizes bare WT_TMUX_TARGET to 'N:'", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: { ...baseEnv(fake), WT_TMUX_TARGET: "0" },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toMatch(/-t 0:/);
-  });
-
-  it("preserves explicit session:window form", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: { ...baseEnv(fake), WT_TMUX_TARGET: "main:3" },
-    });
-    expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toMatch(/-t main:3/);
-    expect(log).not.toMatch(/-t main:3:/);
-  });
-
-  it("$TMUX wins over WT_TMUX_TARGET", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: {
-        ...baseEnv(fake),
-        TMUX: "real",
-        WT_TMUX_TARGET: "should-not-appear",
-      },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).not.toMatch(/should-not-appear/);
-  });
-
-  it("uses WT_ZELLIJ_SESSION when $ZELLIJ is unset", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["zellij"]);
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: { ...baseEnv(fake), WT_ZELLIJ_SESSION: "my-zs" },
-    });
-    expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toMatch(/-s my-zs/);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toMatch(/WT_GHOSTTY_PLACEMENT/);
   });
 
   it("WT_CMD overrides default editor", async () => {
@@ -360,13 +274,13 @@ describe("cli: switch", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), TMUX: "fake", WT_CMD: "special-thing" },
+      env: { ...baseEnv(fake), WT_CMD: "special-thing" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain("special-thing");
+    expect(readLog(fake.log)).toContain('set command of cfg to "special-thing"');
   });
 
   it("$EDITOR is used when WT_CMD is unset", async () => {
@@ -374,13 +288,13 @@ describe("cli: switch", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), TMUX: "fake", EDITOR: "hx" },
+      env: { ...baseEnv(fake), EDITOR: "hx" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain(" hx");
+    expect(readLog(fake.log)).toContain('set command of cfg to "hx"');
   });
 
   it("falls back to vi when WT_CMD and $EDITOR are unset", async () => {
@@ -388,13 +302,13 @@ describe("cli: switch", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), TMUX: "fake" },
+      env: baseEnv(fake),
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toMatch(/ vi$/m);
+    expect(readLog(fake.log)).toContain('set command of cfg to "vi"');
   });
 });
 
@@ -412,104 +326,15 @@ describe("cli: root", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["tmux"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["root"], {
       cwd: feat,
-      env: { ...baseEnv(fake), TMUX: "fake" },
+      env: baseEnv(fake),
     });
     expect(r.exitCode).toBe(0);
     const log = readLog(fake.log);
     expect(log).toContain(repo);
     expect(log).not.toContain(feat);
-  });
-
-  it("root uses WT_TMUX_TARGET outside tmux", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    const r = await runCli(BIN, ["root"], {
-      cwd: feat,
-      env: { ...baseEnv(fake), WT_TMUX_TARGET: "main-sess" },
-    });
-    expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toContain(repo);
-    expect(log).toMatch(/-t main-sess:/);
-  });
-});
-
-describe("cli: auto-spawn + cache", () => {
-  const repos: string[] = [];
-  afterEach(() => {
-    while (repos.length) {
-      const r = repos.pop();
-      if (r) cleanRepo(r);
-    }
-  });
-
-  it("reuses cached session across two invocations", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    const env = baseEnv(fake);
-
-    const r1 = await runCli(BIN, ["switch", "feat"], { cwd: repo, env });
-    expect(r1.exitCode).toBe(0);
-    const log1 = readLog(fake.log);
-    expect(log1).toMatch(/new-session -d -s wt/);
-
-    const r2 = await runCli(BIN, ["switch", "main"], { cwd: repo, env });
-    expect(r2.exitCode).toBe(0);
-    const log2 = readLog(fake.log);
-    // The second invocation should NOT create another session
-    const newSessionCount = (log2.match(/new-session -d -s wt/g) ?? []).length;
-    expect(newSessionCount).toBe(1);
-    // And it should have targeted the cached 'wt:' session
-    expect(log2.split("\n").filter((l) => l.includes("new-window")).length).toBe(2);
-  });
-
-  it("picks the first existing tmux session when no cache is present", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    // Pre-populate existing sessions (no wt session)
-    require("node:fs").writeFileSync(fake.state, "alpha\nbeta\n");
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: baseEnv(fake),
-    });
-    expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    expect(log).toMatch(/new-window -t alpha:/);
-    expect(log).not.toMatch(/new-session -d -s/);
-  });
-
-  it("recovers from a stale cache (session no longer exists)", async () => {
-    const repo = makeRepo();
-    repos.push(repo);
-    const feat = addWorktree(repo, "feat");
-    repos.push(feat);
-    const fake = fakeBin(["tmux"]);
-    // Pre-seed cache pointing at a ghost session
-    const fs = require("node:fs") as typeof import("node:fs");
-    fs.mkdirSync(`${fake.dir}/wt`, { recursive: true });
-    fs.writeFileSync(`${fake.dir}/wt/session`, JSON.stringify({ mux: "tmux", session: "ghost" }));
-    const r = await runCli(BIN, ["switch", "feat"], {
-      cwd: repo,
-      env: baseEnv(fake),
-    });
-    expect(r.exitCode).toBe(0);
-    const log = readLog(fake.log);
-    // has-session on 'ghost' fails → list-sessions returns empty → cold-start 'wt'
-    expect(log).toMatch(/has-session -t =ghost/);
-    expect(log).toMatch(/new-session -d -s wt/);
-    expect(log).toMatch(/new-window -t wt:/);
   });
 });
 

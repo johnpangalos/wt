@@ -1,0 +1,73 @@
+export type GhosttyPlacement =
+  | "new-window"
+  | "new-tab"
+  | "split-right"
+  | "split-left"
+  | "split-down"
+  | "split-up";
+
+export type SwitchArgs = {
+  path: string;
+  cmd: string;
+};
+
+export type Env = Record<string, string | undefined>;
+
+/** Quote a string as an AppleScript double-quoted literal, escaping `\` and `"`. */
+function asString(s: string): string {
+  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Build the AppleScript that opens `args.cmd` at `args.path` in Ghostty.
+ *
+ * Uses Ghostty's AppleScript dictionary (1.3+): a `surface configuration`
+ * carries the working directory and command, then `new window` / `new tab` /
+ * `split` consumes it. AppleScript talks to a running Ghostty from anywhere —
+ * no session juggling — and `activate` launches Ghostty if it isn't open yet.
+ */
+export function buildGhosttyScript(
+  args: SwitchArgs,
+  placement: GhosttyPlacement,
+): string {
+  const lines = [
+    `tell application "Ghostty"`,
+    `  activate`,
+    `  set cfg to new surface configuration`,
+    `  set initial working directory of cfg to ${asString(args.path)}`,
+  ];
+  if (args.cmd) {
+    lines.push(`  set command of cfg to ${asString(args.cmd)}`);
+  }
+
+  if (placement === "new-window") {
+    lines.push(`  new window with configuration cfg`);
+  } else if (placement === "new-tab") {
+    lines.push(`  new tab with configuration cfg`);
+  } else {
+    // split-right | split-left | split-down | split-up
+    const direction = placement.slice("split-".length);
+    lines.push(
+      `  split (terminal 1 of front window) direction ${direction} with configuration cfg`,
+    );
+  }
+
+  lines.push(`end tell`);
+  return lines.join("\n");
+}
+
+export function buildGhosttyCmd(
+  args: SwitchArgs,
+  placement: GhosttyPlacement,
+): string[] {
+  return ["osascript", "-e", buildGhosttyScript(args, placement)];
+}
+
+export async function spawnGhostty(argv: string[]): Promise<void> {
+  const [cmd, ...rest] = argv;
+  if (!cmd) throw new Error("empty ghostty argv");
+  const proc = Bun.spawn([cmd, ...rest], { stdout: "pipe", stderr: "pipe" });
+  const stderr = await new Response(proc.stderr).text();
+  const code = await proc.exited;
+  if (code !== 0) throw new Error(stderr.trim() || `${cmd} exited ${code}`);
+}

@@ -3,36 +3,29 @@ import { listWorktrees, repoRoot } from "./git";
 import { listAgents, matchAgents, type AgentSession } from "./agents";
 import type { Worktree } from "./types";
 import {
-  buildTmuxCmd,
-  buildZellijCmd,
-  detect,
-  spawnMux,
+  buildGhosttyCmd,
+  spawnGhostty,
   type Env,
-  type TmuxPlacement,
-  type ZellijPlacement,
-} from "./mux";
-import { resolveMuxTarget } from "./session";
+  type GhosttyPlacement,
+} from "./ghostty";
 import { VERSION, cmdUpdate, maybeNag, refreshCache } from "./update";
 
 const USAGE = `wt — worktree helper
 
 Usage:
   wt list [--json]          list worktrees (annotates Claude Code agent sessions)
-  wt switch <branch|path>   open a worktree in a new tmux/zellij window
-  wt root                   open the main (root) worktree in a new mux window
+  wt switch <branch|path>   open a worktree in a new Ghostty window
+  wt root                   open the main (root) worktree in a new Ghostty window
   wt current                print the path of the worktree containing $PWD
   wt update                 check for a new release and install it
   wt --version              print the installed wt version
   wt --help                 show this help
 
 Environment:
-  WT_CMD              command to spawn (default: $EDITOR or vi)
-  WT_TMUX_PLACEMENT   new-window (default) | split-h | split-v
-  WT_ZELLIJ_PLACEMENT new-tab (default) | new-pane
-  WT_TMUX_TARGET      tmux session to target when $TMUX is unset (e.g. "0")
-  WT_TMUX_SOCKET      full path of tmux socket (-S), for non-default sockets
-  WT_ZELLIJ_SESSION   zellij session to target when $ZELLIJ is unset
-  WT_NO_UPDATE_CHECK  set to any value to disable the background update check
+  WT_CMD                command to spawn (default: $EDITOR or vi)
+  WT_GHOSTTY_PLACEMENT  new-window (default) | new-tab |
+                        split-right | split-left | split-down | split-up
+  WT_NO_UPDATE_CHECK    set to any value to disable the background update check
 `;
 
 function die(msg: string): never {
@@ -70,18 +63,20 @@ function resolveCmd(env: Env): string {
   return env.WT_CMD || env.EDITOR || "vi";
 }
 
-function tmuxPlacement(env: Env): TmuxPlacement {
-  const v = env.WT_TMUX_PLACEMENT;
-  if (!v || v === "new-window") return "new-window";
-  if (v === "split-h" || v === "split-v") return v;
-  die(`unknown WT_TMUX_PLACEMENT: ${v}`);
-}
+const GHOSTTY_PLACEMENTS: GhosttyPlacement[] = [
+  "new-window",
+  "new-tab",
+  "split-right",
+  "split-left",
+  "split-down",
+  "split-up",
+];
 
-function zellijPlacement(env: Env): ZellijPlacement {
-  const v = env.WT_ZELLIJ_PLACEMENT;
-  if (!v || v === "new-tab") return "new-tab";
-  if (v === "new-pane") return "new-pane";
-  die(`unknown WT_ZELLIJ_PLACEMENT: ${v}`);
+function ghosttyPlacement(env: Env): GhosttyPlacement {
+  const v = env.WT_GHOSTTY_PLACEMENT;
+  if (!v) return "new-window";
+  if ((GHOSTTY_PLACEMENTS as string[]).includes(v)) return v as GhosttyPlacement;
+  die(`unknown WT_GHOSTTY_PLACEMENT: ${v}`);
 }
 
 async function getWorktrees(env: Env): Promise<Worktree[]> {
@@ -124,27 +119,11 @@ async function cmdList(args: string[], env: Env): Promise<void> {
   }
 }
 
-async function switchTo(path: string, branch: string, env: Env): Promise<void> {
-  let resolved: Env;
+async function switchTo(path: string, env: Env): Promise<void> {
+  const cmd = resolveCmd(env);
+  const argv = buildGhosttyCmd({ path, cmd }, ghosttyPlacement(env));
   try {
-    resolved = await resolveMuxTarget(env);
-  } catch (e) {
-    die((e as Error).message);
-  }
-  const mux = detect(resolved);
-  if (!mux) {
-    die(
-      "no mux detected (set $TMUX or $ZELLIJ, or WT_TMUX_TARGET / WT_ZELLIJ_SESSION)",
-    );
-  }
-  const cmd = resolveCmd(resolved);
-  const args = { path, branch, cmd };
-  const argv =
-    mux === "tmux"
-      ? buildTmuxCmd(resolved, args, tmuxPlacement(resolved))
-      : buildZellijCmd(resolved, args, zellijPlacement(resolved));
-  try {
-    await spawnMux(argv);
+    await spawnGhostty(argv);
   } catch (e) {
     die((e as Error).message);
   }
@@ -168,14 +147,14 @@ async function cmdSwitch(args: string[], env: Env): Promise<void> {
       w.branch === target || w.path === target || w.path === resolved,
   );
   if (!match) die(`worktree '${target}' not found`);
-  await switchTo(match.path, displayBranch(match), env);
+  await switchTo(match.path, env);
 }
 
 async function cmdRoot(_args: string[], env: Env): Promise<void> {
   const entries = await getWorktrees(env);
   const main = entries[0];
   if (!main) die("no worktrees found");
-  await switchTo(main.path, displayBranch(main), env);
+  await switchTo(main.path, env);
 }
 
 async function cmdCurrent(_args: string[], env: Env): Promise<void> {

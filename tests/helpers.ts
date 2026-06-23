@@ -36,59 +36,7 @@ export function addWorktree(repo: string, branch: string, path?: string): string
   return wtPath;
 }
 
-export type FakeBin = { dir: string; log: string; state: string };
-
-const SMART_TMUX = (log: string, state: string) => `#!/bin/sh
-LOG='${log}'
-STATE='${state}'
-printf 'tmux' >> "$LOG"
-for a in "$@"; do printf ' %s' "$a" >> "$LOG"; done
-printf '\\n' >> "$LOG"
-
-subcmd=
-expect=
-for a in "$@"; do
-  if [ -n "$expect" ]; then expect=; continue; fi
-  case "$a" in
-    -S) expect=1 ;;
-    -*) ;;
-    *) subcmd=$a; break ;;
-  esac
-done
-
-target=
-session=
-prev=
-for a in "$@"; do
-  case "$prev" in
-    -t) target=$a ;;
-    -s) session=$a ;;
-  esac
-  prev=$a
-done
-
-case "$subcmd" in
-  has-session)
-    name=\${target#=}
-    [ -f "$STATE" ] || exit 1
-    grep -Fxq "$name" "$STATE" || exit 1
-    ;;
-  list-sessions)
-    if [ -f "$STATE" ] && [ -s "$STATE" ]; then
-      cat "$STATE"
-    else
-      exit 1
-    fi
-    ;;
-  new-session)
-    if [ -n "$session" ]; then
-      mkdir -p "\$(dirname "$STATE")"
-      echo "$session" >> "$STATE"
-    fi
-    ;;
-esac
-exit 0
-`;
+export type FakeBin = { dir: string; log: string };
 
 const DUMB = (name: string, log: string) => `#!/bin/sh
 printf '%s' "${name}" >> "${log}"
@@ -96,17 +44,20 @@ for a in "$@"; do printf ' %s' "$a" >> "${log}"; done
 printf '\\n' >> "${log}"
 `;
 
+/**
+ * Create a temp dir holding fake executables that log their argv to a shared
+ * log file. Drop the dir on `$PATH` to intercept `osascript` (or any binary)
+ * without running the real thing.
+ */
 export function fakeBin(names: string[]): FakeBin {
   const dir = mkdtempSync(join(tmpdir(), "wt-fakebin-"));
-  const log = join(dir, "mux.log");
-  const state = join(dir, "tmux-state");
+  const log = join(dir, "spawn.log");
   for (const name of names) {
     const path = join(dir, name);
-    const script = name === "tmux" ? SMART_TMUX(log, state) : DUMB(name, log);
-    writeFileSync(path, script);
+    writeFileSync(path, DUMB(name, log));
     chmodSync(path, 0o755);
   }
-  return { dir, log, state };
+  return { dir, log };
 }
 
 /**

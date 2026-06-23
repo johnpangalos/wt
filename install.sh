@@ -28,11 +28,10 @@ fi
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$os-$arch" in
-  Darwin-arm64)              asset="wt-darwin-arm64" ;;
-  Linux-x86_64)              asset="wt-linux-x64" ;;
-  Darwin-x86_64)             die "macOS Intel not supported; build from source: https://github.com/$REPO#build-from-source" ;;
-  Linux-aarch64|Linux-arm64) die "Linux arm64 not supported yet; build from source: https://github.com/$REPO#build-from-source" ;;
-  *)                         die "unsupported platform: $os/$arch" ;;
+  Darwin-arm64)   asset="wt-darwin-arm64" ;;
+  Darwin-x86_64)  die "macOS Intel not supported; build from source: https://github.com/$REPO#build-from-source" ;;
+  Linux-*)        die "wt drives Ghostty via AppleScript and only runs on macOS" ;;
+  *)              die "unsupported platform: $os/$arch (wt is macOS-only)" ;;
 esac
 
 if [ -n "${WT_VERSION:-}" ]; then
