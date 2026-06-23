@@ -183,7 +183,7 @@ describe("cli: switch", () => {
     }
   });
 
-  it("switch <branch> drives Ghostty (osascript) with the worktree path", async () => {
+  it("switch <branch> drives Ghostty (osascript) with the worktree path in a new tab by default", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
@@ -198,7 +198,8 @@ describe("cli: switch", () => {
     expect(log).toMatch(/^osascript /);
     expect(log).toContain('tell application "Ghostty"');
     expect(log).toContain(`set initial working directory of cfg to "${feat}"`);
-    expect(log).toContain("new window with configuration cfg");
+    expect(log).toContain("new tab with configuration cfg");
+    expect(log).not.toContain("new window with configuration cfg");
   });
 
   it("switch by absolute path resolves to the worktree", async () => {
@@ -227,7 +228,7 @@ describe("cli: switch", () => {
     expect(r.stderr + r.stdout).toMatch(/nope-missing|not found/);
   });
 
-  it("WT_GHOSTTY_PLACEMENT=new-tab opens a tab", async () => {
+  it("WT_GHOSTTY_PLACEMENT=new-window opens a window", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
@@ -235,10 +236,12 @@ describe("cli: switch", () => {
     const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), WT_GHOSTTY_PLACEMENT: "new-tab" },
+      env: { ...baseEnv(fake), WT_GHOSTTY_PLACEMENT: "new-window" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain("new tab with configuration cfg");
+    const log = readLog(fake.log);
+    expect(log).toContain("new window with configuration cfg");
+    expect(log).not.toContain("new tab with configuration cfg");
   });
 
   it("WT_GHOSTTY_PLACEMENT=split-right splits the front window", async () => {

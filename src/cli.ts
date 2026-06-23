@@ -14,8 +14,8 @@ const USAGE = `wt — worktree helper
 
 Usage:
   wt list [--json]          list worktrees (annotates Claude Code agent sessions)
-  wt switch <branch|path>   open a worktree in a new Ghostty window
-  wt root                   open the main (root) worktree in a new Ghostty window
+  wt switch <branch|path>   open a worktree in a new Ghostty tab
+  wt root                   open the main (root) worktree in a new Ghostty tab
   wt current                print the path of the worktree containing $PWD
   wt update                 check for a new release and install it
   wt --version              print the installed wt version
@@ -23,7 +23,7 @@ Usage:
 
 Environment:
   WT_CMD                command to spawn (default: $EDITOR or vi)
-  WT_GHOSTTY_PLACEMENT  new-window (default) | new-tab |
+  WT_GHOSTTY_PLACEMENT  new-tab (default) | new-window |
                         split-right | split-left | split-down | split-up
   WT_NO_UPDATE_CHECK    set to any value to disable the background update check
 `;
@@ -74,7 +74,7 @@ const GHOSTTY_PLACEMENTS: GhosttyPlacement[] = [
 
 function ghosttyPlacement(env: Env): GhosttyPlacement {
   const v = env.WT_GHOSTTY_PLACEMENT;
-  if (!v) return "new-window";
+  if (!v) return "new-tab";
   if ((GHOSTTY_PLACEMENTS as string[]).includes(v)) return v as GhosttyPlacement;
   die(`unknown WT_GHOSTTY_PLACEMENT: ${v}`);
 }

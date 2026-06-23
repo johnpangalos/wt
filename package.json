@@ -1,7 +1,7 @@
 {
   "name": "wt",
   "version": "0.2.0",
-  "description": "Pick and switch git worktrees from the shell. Opens each worktree in a new Ghostty window via AppleScript.",
+  "description": "Pick and switch git worktrees from the shell. Opens each worktree in a new Ghostty tab via AppleScript.",
   "bin": {
     "wt": "./bin/wt"
   },

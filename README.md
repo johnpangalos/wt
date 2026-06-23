@@ -1,8 +1,8 @@
 # wt
 
-Pick and switch git worktrees from the shell. `wt switch <branch>` opens the worktree in a new [Ghostty](https://ghostty.org) window running your `$EDITOR` — fresh cwd, fresh LSP, nothing leaking between branches.
+Pick and switch git worktrees from the shell. `wt switch <branch>` opens the worktree in a new [Ghostty](https://ghostty.org) tab running your `$EDITOR` — fresh cwd, fresh LSP, nothing leaking between branches.
 
-It drives Ghostty through its AppleScript dictionary, so `wt` can talk to a running Ghostty from anywhere — even when launched outside any terminal (Claude Code's Bash tool, a launchd job, a script). No session juggling: `wt switch` just opens a window and Ghostty pops to the front.
+It drives Ghostty through its AppleScript dictionary, so `wt` can talk to a running Ghostty from anywhere — even when launched outside any terminal (Claude Code's Bash tool, a launchd job, a script). No session juggling: `wt switch` just opens a tab and Ghostty pops to the front.
 
 Designed for workflows that create worktrees elsewhere (Claude Code, scripts, another terminal) and just want a fast way to jump into them.
 
@@ -47,9 +47,9 @@ ln -s "$PWD/bin/wt" "$HOME/.local/bin/wt"            # put it on $PATH
 ```sh
 wt list                 # list worktrees (TSV)
 wt list --json          # list worktrees (JSON)
-wt switch feature-x     # open the feature-x worktree in a new Ghostty window
+wt switch feature-x     # open the feature-x worktree in a new Ghostty tab
 wt switch /path/to/wt   # same, by path
-wt root                 # open the main (root) worktree in a new Ghostty window
+wt root                 # open the main (root) worktree in a new Ghostty tab
 wt current              # print the worktree containing $PWD
 wt update               # check GitHub for a new release and install it
 wt --version            # print the installed version
@@ -89,13 +89,14 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 | Variable | Default | Purpose |
 |---|---|---|
 | `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. |
-| `WT_GHOSTTY_PLACEMENT` | `new-window` | `new-window` \| `new-tab` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
+| `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
 
 The `split-*` placements split the focused terminal of Ghostty's front window in
 that direction, so they only do something useful when a Ghostty window already
-exists. `new-window` (the default) and `new-tab` always work — AppleScript
-launches Ghostty first if it isn't running.
+exists. `new-tab` (the default) and `new-window` always work — AppleScript
+launches Ghostty first if it isn't running. A new tab joins the front window if
+one is open, or opens the first window otherwise.
 
 > **Tab/window titles:** Ghostty's AppleScript surface configuration exposes the
 > working directory and command but not a settable title, so `wt` doesn't name
@@ -112,7 +113,7 @@ tell application "Ghostty"
   set cfg to new surface configuration
   set initial working directory of cfg to "/path/to/worktree"
   set command of cfg to "nvim"
-  new window with configuration cfg
+  new tab with configuration cfg
 end tell
 ```
 
@@ -130,7 +131,7 @@ $ git worktree add ../repo-feat -b feat
 $ wt switch feat
 ```
 
-A new Ghostty window pops open (Ghostty comes to the front) with your editor at
+A new Ghostty tab pops open (Ghostty comes to the front) with your editor at
 the worktree's path.
 
 ## Development
