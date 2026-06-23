@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import type { Env } from "./mux";
+import type { Env } from "./ghostty";
 
 export type AgentSession = {
   /** Working directory of the session — a worktree path once the agent moves in. */

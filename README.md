@@ -1,17 +1,20 @@
 # wt
 
-Pick and switch git worktrees from the shell. `wt switch <branch>` opens the worktree in a new tmux window (or zellij tab) running your `$EDITOR` — fresh cwd, fresh LSP, nothing leaking between branches.
+Pick and switch git worktrees from the shell. `wt switch <branch>` opens the worktree in a new [Ghostty](https://ghostty.org) tab running your `$EDITOR` — fresh cwd, fresh LSP, nothing leaking between branches.
+
+It drives Ghostty through its AppleScript dictionary, so `wt` can talk to a running Ghostty from anywhere — even when launched outside any terminal (Claude Code's Bash tool, a launchd job, a script). No session juggling: `wt switch` just opens a tab and Ghostty pops to the front.
 
 Designed for workflows that create worktrees elsewhere (Claude Code, scripts, another terminal) and just want a fast way to jump into them.
 
 ## Requirements
 
+- macOS (Ghostty's AppleScript support is macOS-only)
 - `git`
-- `tmux` or `zellij`
+- [Ghostty](https://ghostty.org) **1.3 or newer** (AppleScript support landed in 1.3)
 
 ## Install
 
-macOS (Apple Silicon) and Linux (x64):
+macOS (Apple Silicon):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh | sh
@@ -44,9 +47,9 @@ ln -s "$PWD/bin/wt" "$HOME/.local/bin/wt"            # put it on $PATH
 ```sh
 wt list                 # list worktrees (TSV)
 wt list --json          # list worktrees (JSON)
-wt switch feature-x     # open the feature-x worktree in a new mux window
+wt switch feature-x     # open the feature-x worktree in a new Ghostty tab
 wt switch /path/to/wt   # same, by path
-wt root                 # open the main (root) worktree in a new mux window
+wt root                 # open the main (root) worktree in a new Ghostty tab
 wt current              # print the worktree containing $PWD
 wt update               # check GitHub for a new release and install it
 wt --version            # print the installed version
@@ -85,36 +88,39 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WT_CMD` | `$EDITOR` or `vi` | Command to spawn in the new window. |
-| `WT_TMUX_PLACEMENT` | `new-window` | `new-window` \| `split-h` \| `split-v` |
-| `WT_ZELLIJ_PLACEMENT` | `new-tab` | `new-tab` \| `new-pane` |
-| `WT_TMUX_TARGET` | — | tmux session to target when `$TMUX` is unset (e.g. `0`). |
-| `WT_TMUX_SOCKET` | — | tmux socket (`-S`), for non-default sockets. |
-| `WT_ZELLIJ_SESSION` | — | zellij session to target when `$ZELLIJ` is unset. |
+| `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. |
+| `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
 
-## Running from outside a mux (auto-spawn + cache)
+The `split-*` placements split the focused terminal of Ghostty's front window in
+that direction, so they only do something useful when a Ghostty window already
+exists. `new-tab` (the default) and `new-window` always work — AppleScript
+launches Ghostty first if it isn't running. A new tab joins the front window if
+one is open, or opens the first window otherwise.
 
-When `wt` runs outside a tmux pane (Claude Code's Bash tool, a launchd job, etc.), `$TMUX` isn't set. `wt` picks a target automatically, in this order:
+> **Tab/window titles:** Ghostty's AppleScript surface configuration exposes the
+> working directory and command but not a settable title, so `wt` doesn't name
+> the window/tab after the branch (the old tmux `-n` behavior). Ghostty titles
+> surfaces from the running program / shell instead.
 
-1. **Cache hit** — if `$XDG_STATE_HOME/wt/session` points at a still-running session, use it.
-2. **First existing session** — otherwise, pick the first session from `tmux list-sessions` and cache it.
-3. **Cold start** — otherwise, run `tmux new-session -d -s wt` and cache `wt`.
+## How it works (AppleScript)
 
-Attach later with `tmux attach -t wt` (or whichever name got cached).
+`wt switch` builds a short AppleScript and runs it with `osascript`:
 
-You can override any of that:
-
-```sh
-WT_TMUX_TARGET=0 wt root                           # target tmux session "0"
-WT_TMUX_TARGET=main:3 wt switch feat               # explicit session:window form
-WT_TMUX_SOCKET=/tmp/my-sock WT_TMUX_TARGET=0 wt switch feat
-WT_ZELLIJ_SESSION=main wt switch feat              # zellij equivalent
+```applescript
+tell application "Ghostty"
+  activate
+  set cfg to new surface configuration
+  set initial working directory of cfg to "/path/to/worktree"
+  set command of cfg to "nvim"
+  new tab with configuration cfg
+end tell
 ```
 
-Bare values like `0` are normalized to `0:` so tmux treats them as session names, not window indices.
-
-The cache lives at `$XDG_STATE_HOME/wt/session` (default `~/.local/state/wt/session`). Delete it to force re-resolution.
+Because AppleScript addresses the running Ghostty app directly, this works the
+same whether `wt` runs inside a Ghostty terminal or from somewhere with no TTY
+at all (Claude Code's Bash tool, a launchd job, a script) — there's no session
+to find or cache. If Ghostty isn't open, `activate` launches it.
 
 ## From Claude Code
 
@@ -122,22 +128,23 @@ Drop [`claude/commands/wt.md`](claude/commands/wt.md) into `~/.claude/commands/`
 
 ```
 $ git worktree add ../repo-feat -b feat
-$ WT_TMUX_TARGET=0 wt switch feat
+$ wt switch feat
 ```
 
-A new tmux window pops open with your editor at the worktree's path — alt-tab to it.
+A new Ghostty tab pops open (Ghostty comes to the front) with your editor at
+the worktree's path.
 
 ## Development
 
 ```sh
 bun install
 bun run build          # produces bin/wt
-bun test               # build + run all tests (77 tests)
+bun test               # build + run all tests (48 tests)
 bun run test:fast      # run tests against the last-built binary
 bun run typecheck      # tsc --noEmit
 ```
 
-Tests use real git repos in `$TMPDIR` and fake `tmux`/`zellij` binaries on `$PATH` that log their argv — no mocks of our own code.
+Tests use real git repos in `$TMPDIR` and a fake `osascript` on `$PATH` that logs its argv — no mocks of our own code, and nothing actually talks to Ghostty.
 
 ## Releases
 
@@ -148,4 +155,4 @@ Releases are automated by [release-please](https://github.com/googleapis/release
 - `feat!: ...` or a `BREAKING CHANGE:` footer — major bump
 - `chore:`, `docs:`, `refactor:`, `test:`, `ci:`, `build:`, `perf:` — no bump; may appear in the changelog
 
-release-please opens a `chore(main): release X.Y.Z` PR that bumps `package.json` and updates `CHANGELOG.md`. Merging that PR tags the release and the binary-upload workflow publishes `wt-darwin-arm64`, `wt-linux-x64`, and `SHA256SUMS` to the GitHub Release.
+release-please opens a `chore(main): release X.Y.Z` PR that bumps `package.json` and updates `CHANGELOG.md`. Merging that PR tags the release and the binary-upload workflow publishes `wt-darwin-arm64` and `SHA256SUMS` to the GitHub Release.

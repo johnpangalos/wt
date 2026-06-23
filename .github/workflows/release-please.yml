@@ -42,12 +42,9 @@ jobs:
       - name: Build darwin-arm64
         run: bun run build:darwin-arm64
 
-      - name: Build linux-x64
-        run: bun run build:linux-x64
-
       - name: Generate SHA256SUMS
         working-directory: dist
-        run: sha256sum wt-darwin-arm64 wt-linux-x64 > SHA256SUMS
+        run: sha256sum wt-darwin-arm64 > SHA256SUMS
 
       - name: Upload release assets
         env:
@@ -55,6 +52,5 @@ jobs:
         run: |
           gh release upload "$TAG" \
             dist/wt-darwin-arm64 \
-            dist/wt-linux-x64 \
             dist/SHA256SUMS \
             --clobber
