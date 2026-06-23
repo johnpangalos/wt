@@ -49,6 +49,34 @@ jobs:
           WT_VERSION=test PREFIX=/tmp/wt-install sh install.sh 2>&1 \
             | grep -q 'macOS' || { echo "missing macOS-only message" >&2; exit 1; }
 
+  e2e-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build darwin-arm64
+        run: bun run build:darwin-arm64
+
+      - name: install.sh end-to-end (local mock release)
+        run: |
+          # macOS runner is Apple Silicon, so the darwin-arm64 binary runs
+          # natively - exercise the real install.sh happy path end to end.
+          # (macOS has shasum, not sha256sum; install.sh verifies with either.)
+          mkdir -p /tmp/fake-release
+          cp dist/wt-darwin-arm64 /tmp/fake-release/
+          ( cd /tmp/fake-release && shasum -a 256 wt-darwin-arm64 > SHA256SUMS )
+          ( cd /tmp/fake-release && python3 -m http.server 8787 ) &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for _ in 1 2 3 4 5; do curl -fsS http://localhost:8787/SHA256SUMS && break; sleep 1; done
+
+          sed 's|^base=.*|base="http://localhost:8787"|' install.sh > /tmp/install-patched.sh
+          WT_VERSION=test PREFIX=/tmp/wt-install sh /tmp/install-patched.sh
+          /tmp/wt-install/bin/wt --help
+
   release-please-config:
     runs-on: ubuntu-latest
     steps:
