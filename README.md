@@ -77,7 +77,7 @@ agents are running, output is unchanged.
 
 ## Updating
 
-`wt update` checks the GitHub releases API for a newer version. If one exists, it prints `wt vCURRENT → vLATEST` and prompts for confirmation before re-running `install.sh` with the same `PREFIX` the current binary was installed under.
+`wt update` uses the [GitHub CLI](https://cli.github.com) (`gh api`) to check for a newer release, so it relies on your existing `gh` authentication and isn't subject to the unauthenticated API rate limit (which surfaces as a `403`). `gh` must be installed and authenticated (`gh auth login`). If a newer version exists, it prints `wt vCURRENT → vLATEST` and prompts for confirmation before re-running `install.sh` with the same `PREFIX` the current binary was installed under.
 
 To reduce friction, `wt` also runs a throttled background check (once per day) on every invocation and prints a single-line hint to stderr when a newer release is available:
 

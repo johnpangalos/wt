@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-import { makeRepo, addWorktree, fakeBin, fakeClaudeBin, readLog, runCli, cleanRepo } from "./helpers";
+import { makeRepo, addWorktree, fakeBin, fakeClaudeBin, fakeGhBin, readLog, runCli, cleanRepo } from "./helpers";
 import pkg from "../package.json";
 
 const BIN = resolve(import.meta.dir, "..", "bin", "wt");
@@ -495,6 +495,35 @@ describe("cli: version and update", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toMatch(/update available/);
     expect(r.stderr).toContain(bumped.slice(1));
+  });
+
+  it("update reports up to date using the gh release tag", async () => {
+    const fake = fakeBin([]);
+    fakeGhBin(fake.dir, `v${pkg.version}`);
+    const r = await runCli(BIN, ["update"], {
+      env: {
+        PATH: `${fake.dir}:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin`,
+        HOME: process.env.HOME ?? "",
+        XDG_STATE_HOME: fake.dir,
+        WT_NO_UPDATE_CHECK: "1",
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain(`up to date (v${pkg.version})`);
+  });
+
+  it("update fails clearly when gh is not installed", async () => {
+    const fake = fakeBin([]); // no gh on this PATH
+    const r = await runCli(BIN, ["update"], {
+      env: {
+        PATH: fake.dir,
+        HOME: process.env.HOME ?? "",
+        XDG_STATE_HOME: fake.dir,
+        WT_NO_UPDATE_CHECK: "1",
+      },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/gh not found/);
   });
 
   it("nag stays silent when cache reports the current version", async () => {

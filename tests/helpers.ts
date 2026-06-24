@@ -80,6 +80,23 @@ exit 0
   chmodSync(path, 0o755);
 }
 
+/**
+ * Drop a fake `gh` into `dir` that prints `tag` for
+ * `gh api .../releases/latest --jq .tag_name` (and exits 0 otherwise). Lets
+ * tests exercise `wt update`'s release check without a real gh/GitHub.
+ */
+export function fakeGhBin(dir: string, tag: string): void {
+  const path = join(dir, "gh");
+  const script = `#!/bin/sh
+case "$*" in
+  *releases/latest*) printf '%s\\n' "${tag}"; exit 0 ;;
+esac
+exit 0
+`;
+  writeFileSync(path, script);
+  chmodSync(path, 0o755);
+}
+
 export function readLog(log: string): string {
   try {
     return require("node:fs").readFileSync(log, "utf8") as string;
