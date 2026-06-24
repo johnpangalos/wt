@@ -16,10 +16,8 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
 
 if command -v curl >/dev/null 2>&1; then
-  DL='curl -fsSL'
   DL_O='curl -fsSL -o'
 elif command -v wget >/dev/null 2>&1; then
-  DL='wget -qO-'
   DL_O='wget -qO'
 else
   die "need curl or wget on PATH"
@@ -41,11 +39,12 @@ if [ -n "${WT_VERSION:-}" ]; then
   ver="${ver#v}"           # strip optional "v" prefix
   tag="wt-v$ver"
 else
+  command -v gh >/dev/null 2>&1 \
+    || die "gh not found — install the GitHub CLI (https://cli.github.com) or pin a version with WT_VERSION=vX.Y.Z"
   info "resolving latest wt release..."
-  tag="$($DL "https://api.github.com/repos/$REPO/releases/latest" \
-          | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' \
-          | head -n1)"
-  [ -n "$tag" ] || die "could not determine latest release tag (rate-limited? set WT_VERSION=vX.Y.Z)"
+  tag="$(gh api "repos/$REPO/releases/latest" --jq .tag_name)" \
+    || die "gh api failed (run 'gh auth login'?) — or pin a version with WT_VERSION=vX.Y.Z"
+  [ -n "$tag" ] || die "could not determine latest release tag (set WT_VERSION=vX.Y.Z)"
 fi
 
 base="https://github.com/$REPO/releases/download/$tag"

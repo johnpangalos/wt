@@ -9,7 +9,6 @@ export const VERSION: string = pkg.version;
 
 const REPO = "johnpangalos/wt";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const INSTALL_URL = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
 
 export type UpdateEnv = {
@@ -65,15 +64,20 @@ export function isNewer(latest: string, current: string): boolean {
 }
 
 async function fetchLatestTag(): Promise<string> {
-  const res = await fetch(LATEST_RELEASE_URL, {
-    headers: { "User-Agent": `wt/${VERSION}`, Accept: "application/json" },
-  });
-  if (!res.ok) throw new Error(`github api: ${res.status}`);
-  const body = (await res.json()) as { tag_name?: unknown };
-  if (typeof body.tag_name !== "string" || body.tag_name.length === 0) {
-    throw new Error("no tag_name in response");
+  const gh = Bun.which("gh");
+  if (!gh) {
+    throw new Error("gh not found — install the GitHub CLI: https://cli.github.com");
   }
-  return body.tag_name;
+  const res = await $`${gh} api repos/${REPO}/releases/latest --jq .tag_name`
+    .quiet()
+    .nothrow();
+  if (res.exitCode !== 0) {
+    const detail = res.stderr.toString().trim() || `exit ${res.exitCode}`;
+    throw new Error(`gh api: ${detail}`);
+  }
+  const tag = res.stdout.toString().trim();
+  if (tag.length === 0) throw new Error("no tag_name in response");
+  return tag;
 }
 
 export async function refreshCache(env: UpdateEnv): Promise<void> {
