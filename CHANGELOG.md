@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/johnpangalos/wt/compare/wt-v0.3.1...wt-v0.3.2) (2026-06-24)
+
+
+### Bug Fixes
+
+* **switch:** resolve editor to an absolute path for Ghostty ([#30](https://github.com/johnpangalos/wt/issues/30)) ([e5ad37b](https://github.com/johnpangalos/wt/commit/e5ad37b38d6d00570332f6906ba57e86bf89b7cc))
+
 ## [0.3.1](https://github.com/johnpangalos/wt/compare/wt-v0.3.0...wt-v0.3.1) (2026-06-24)
 
 
