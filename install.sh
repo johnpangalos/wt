@@ -16,10 +16,8 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
 
 if command -v curl >/dev/null 2>&1; then
-  DL='curl -fsSL'
   DL_O='curl -fsSL -o'
 elif command -v wget >/dev/null 2>&1; then
-  DL='wget -qO-'
   DL_O='wget -qO'
 else
   die "need curl or wget on PATH"
