@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/johnpangalos/wt/compare/wt-v0.2.0...wt-v0.3.0) (2026-06-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* drive Ghostty via AppleScript instead of tmux/zellij ([#26](https://github.com/johnpangalos/wt/issues/26))
+
+### Features
+
+* agent-aware wt list ([#20](https://github.com/johnpangalos/wt/issues/20)) ([895fc14](https://github.com/johnpangalos/wt/commit/895fc148b0df3172f9e6aea788e1ab1d4e21856f))
+* drive Ghostty via AppleScript instead of tmux/zellij ([#26](https://github.com/johnpangalos/wt/issues/26)) ([7ceda34](https://github.com/johnpangalos/wt/commit/7ceda34b7fe3fd8ed486fdfc5878c20373d307b5))
+* **switch:** default to current worktree and add placement flags ([#27](https://github.com/johnpangalos/wt/issues/27)) ([b73d98c](https://github.com/johnpangalos/wt/commit/b73d98c343591d1f97c4b3bf0bd40aa13125a815))
+
 ## [0.2.0](https://github.com/johnpangalos/wt/compare/wt-v0.1.0...wt-v0.2.0) (2026-06-05)
 
 
