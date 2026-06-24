@@ -202,6 +202,106 @@ describe("cli: switch", () => {
     expect(log).not.toContain("new window with configuration cfg");
   });
 
+  it("switch with no target re-opens the worktree containing $PWD", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch"], {
+      cwd: feat,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    expect(log).toContain(`set initial working directory of cfg to "${feat}"`);
+    expect(log).toContain("new tab with configuration cfg");
+  });
+
+  it("switch with no target outside any worktree exits non-zero", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "wt-outside-"));
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch"], {
+      cwd: outside,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).not.toBe(0);
+  });
+
+  it("--window flag opens a window, overriding the default tab", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feat", "--window"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    expect(log).toContain("new window with configuration cfg");
+    expect(log).not.toContain("new tab with configuration cfg");
+  });
+
+  it("--split-right flag splits the front window", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feat", "--split-right"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain("direction right");
+  });
+
+  it("placement flag overrides WT_GHOSTTY_PLACEMENT", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feat", "--window"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_GHOSTTY_PLACEMENT: "split-down" },
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    expect(log).toContain("new window with configuration cfg");
+    expect(log).not.toContain("direction down");
+  });
+
+  it("-p new-window opens a window", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feat", "-p", "new-window"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain("new window with configuration cfg");
+  });
+
+  it("--placement with an unknown name exits non-zero", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feat", "--placement", "bogus"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toMatch(/bogus|placement/);
+  });
+
   it("switch by absolute path resolves to the worktree", async () => {
     const repo = makeRepo();
     repos.push(repo);
