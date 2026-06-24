@@ -1,5 +1,9 @@
 import { describe, it, expect } from "bun:test";
-import { buildGhosttyScript, buildGhosttyCmd } from "../src/ghostty";
+import {
+  buildGhosttyScript,
+  buildGhosttyCmd,
+  absolutizeCmd,
+} from "../src/ghostty";
 
 const args = { path: "/r/feat", cmd: "nvim" };
 
@@ -45,6 +49,40 @@ describe("ghostty.buildGhosttyScript", () => {
     expect(s).toContain(
       'set initial working directory of cfg to "/r/a \\"b\\"\\\\c"',
     );
+  });
+});
+
+describe("ghostty.absolutizeCmd", () => {
+  const lookup = (bin: string): string | null =>
+    ({ nvim: "/opt/homebrew/bin/nvim", vi: "/usr/bin/vi" })[bin] ?? null;
+
+  it("expands a bare executable to its absolute path", () => {
+    expect(absolutizeCmd("nvim", lookup)).toBe("/opt/homebrew/bin/nvim");
+  });
+
+  it("resolves the executable but preserves arguments", () => {
+    expect(absolutizeCmd("nvim -p .", lookup)).toBe("/opt/homebrew/bin/nvim -p .");
+  });
+
+  it("leaves a command that already contains a slash unchanged", () => {
+    expect(absolutizeCmd("/usr/local/bin/nvim", lookup)).toBe(
+      "/usr/local/bin/nvim",
+    );
+    expect(absolutizeCmd("./editor", lookup)).toBe("./editor");
+  });
+
+  it("falls back to the original command when the executable isn't found", () => {
+    expect(absolutizeCmd("nonesuch", lookup)).toBe("nonesuch");
+    expect(absolutizeCmd("nonesuch --flag", lookup)).toBe("nonesuch --flag");
+  });
+
+  it("trims surrounding whitespace before resolving", () => {
+    expect(absolutizeCmd("  nvim  ", lookup)).toBe("/opt/homebrew/bin/nvim");
+  });
+
+  it("returns an empty command unchanged", () => {
+    expect(absolutizeCmd("", lookup)).toBe("");
+    expect(absolutizeCmd("   ", lookup)).toBe("   ");
   });
 });
 
