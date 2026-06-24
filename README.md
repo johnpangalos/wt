@@ -20,7 +20,9 @@ macOS (Apple Silicon):
 curl -fsSL https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh | sh
 ```
 
-Installs to `~/.local/bin/wt`. Override with `PREFIX=/usr/local` or pin a version with `WT_VERSION=v0.1.0`.
+Installs to `~/.local/bin/wt`. Override with `PREFIX=/usr/local`.
+
+Resolving the latest release uses the [GitHub CLI](https://cli.github.com), so `gh` must be installed and authenticated (`gh auth login`) — this avoids the unauthenticated API rate limit that otherwise surfaces as a `403`. To install without `gh`, pin a version with `WT_VERSION=v0.1.0`, which skips the release lookup entirely.
 
 On first run, macOS may quarantine the unsigned binary. Clear it with:
 
