@@ -49,6 +49,9 @@ wt list                 # list worktrees (TSV)
 wt list --json          # list worktrees (JSON)
 wt switch feature-x     # open the feature-x worktree in a new Ghostty tab
 wt switch /path/to/wt   # same, by path
+wt switch               # re-open the worktree containing $PWD (= wt switch $(wt current))
+wt switch feat --window # open in a new window instead of a tab
+wt switch --split-right # split the front window with the current worktree
 wt root                 # open the main (root) worktree in a new Ghostty tab
 wt current              # print the worktree containing $PWD
 wt update               # check GitHub for a new release and install it
@@ -91,6 +94,12 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 | `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. |
 | `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
+
+`wt switch` and `wt root` also take a placement flag that overrides
+`WT_GHOSTTY_PLACEMENT` for a single invocation: `--tab`, `--window`,
+`--split-right`, `--split-left`, `--split-down`, `--split-up`, `--split` (alias
+for `--split-right`), or `--placement <name>` / `-p <name>` for any of those
+names.
 
 The `split-*` placements split the focused terminal of Ghostty's front window in
 that direction, so they only do something useful when a Ghostty window already

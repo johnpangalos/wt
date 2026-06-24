@@ -13,7 +13,7 @@ terminal — Ghostty pops to the front on the user's Mac.
 
 - `wt list` — tab-separated path / branch / flags
 - `wt list --json` — same, as JSON (pipe to `jq` if you need to filter)
-- `wt switch <branch|path>` — open that worktree in a new Ghostty tab
+- `wt switch [branch|path]` — open that worktree in a new Ghostty tab. With no argument it re-opens the worktree containing the current directory (the same as `wt switch $(wt current)`).
 - `wt root` — open the main (root) worktree in a new Ghostty tab
 - `wt current` — print the worktree containing the current directory
 
@@ -33,7 +33,20 @@ There's no tmux/zellij session to target and no `$TMUX` to set — just call:
 wt switch feat
 ```
 
-By default this opens a new tab. Change the placement with `WT_GHOSTTY_PLACEMENT`:
+By default this opens a new tab. Change the placement with a flag (which wins
+over the `WT_GHOSTTY_PLACEMENT` environment variable):
+
+```sh
+wt switch feat --window        # new window instead of a tab
+wt switch feat --split-right   # split the front window to the right
+wt switch feat --tab           # explicit new tab (the default)
+wt switch --window             # re-open the current worktree in a new window
+```
+
+The flags are `--tab`, `--window`, `--split-right`, `--split-left`,
+`--split-down`, `--split-up`, `--split` (alias for `--split-right`), and
+`--placement <name>` / `-p <name>` for any of those names. The same flags work
+on `wt root`. The `WT_GHOSTTY_PLACEMENT` env var still sets the default:
 
 ```sh
 WT_GHOSTTY_PLACEMENT=new-window  wt switch feat   # new window instead of a tab

@@ -14,12 +14,24 @@ const USAGE = `wt — worktree helper
 
 Usage:
   wt list [--json]          list worktrees (annotates Claude Code agent sessions)
-  wt switch <branch|path>   open a worktree in a new Ghostty tab
+  wt switch [branch|path]   open a worktree in a new Ghostty tab
+                            (defaults to the worktree containing $PWD)
   wt root                   open the main (root) worktree in a new Ghostty tab
   wt current                print the path of the worktree containing $PWD
   wt update                 check for a new release and install it
   wt --version              print the installed wt version
   wt --help                 show this help
+
+Placement flags (for switch / root, override WT_GHOSTTY_PLACEMENT):
+  --tab                 open in a new tab (default)
+  --window              open in a new window
+  --split-right         split the front window to the right
+  --split-left          split the front window to the left
+  --split-down          split the front window downward
+  --split-up            split the front window upward
+  --split               alias for --split-right
+  --placement <name>, -p <name>
+                        any of the names above (new-tab, new-window, split-*)
 
 Environment:
   WT_CMD                command to spawn (default: $EDITOR or vi)
@@ -72,11 +84,51 @@ const GHOSTTY_PLACEMENTS: GhosttyPlacement[] = [
   "split-up",
 ];
 
-function ghosttyPlacement(env: Env): GhosttyPlacement {
+function ghosttyPlacement(env: Env, override?: GhosttyPlacement): GhosttyPlacement {
+  if (override) return override;
   const v = env.WT_GHOSTTY_PLACEMENT;
   if (!v) return "new-tab";
   if ((GHOSTTY_PLACEMENTS as string[]).includes(v)) return v as GhosttyPlacement;
   die(`unknown WT_GHOSTTY_PLACEMENT: ${v}`);
+}
+
+/** Map a CLI placement flag to its GhosttyPlacement. */
+const PLACEMENT_FLAGS: Record<string, GhosttyPlacement> = {
+  "--tab": "new-tab",
+  "--window": "new-window",
+  "--split": "split-right",
+  "--split-right": "split-right",
+  "--split-left": "split-left",
+  "--split-down": "split-down",
+  "--split-up": "split-up",
+};
+
+/**
+ * Pull any placement flag out of `args`, returning the chosen placement (if any)
+ * and the remaining positional arguments. A later flag wins over an earlier one.
+ */
+function parsePlacement(args: string[]): {
+  placement?: GhosttyPlacement;
+  rest: string[];
+} {
+  const rest: string[] = [];
+  let placement: GhosttyPlacement | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a in PLACEMENT_FLAGS) {
+      placement = PLACEMENT_FLAGS[a];
+    } else if (a === "--placement" || a === "-p") {
+      const v = args[++i];
+      if (!v) die(`${a} requires a value`);
+      if (!(GHOSTTY_PLACEMENTS as string[]).includes(v)) {
+        die(`unknown placement: ${v}`);
+      }
+      placement = v as GhosttyPlacement;
+    } else {
+      rest.push(a);
+    }
+  }
+  return { placement, rest };
 }
 
 async function getWorktrees(env: Env): Promise<Worktree[]> {
@@ -119,14 +171,32 @@ async function cmdList(args: string[], env: Env): Promise<void> {
   }
 }
 
-async function switchTo(path: string, env: Env): Promise<void> {
+async function switchTo(
+  path: string,
+  env: Env,
+  placement?: GhosttyPlacement,
+): Promise<void> {
   const cmd = resolveCmd(env);
-  const argv = buildGhosttyCmd({ path, cmd }, ghosttyPlacement(env));
+  const argv = buildGhosttyCmd({ path, cmd }, ghosttyPlacement(env, placement));
   try {
     await spawnGhostty(argv);
   } catch (e) {
     die((e as Error).message);
   }
+}
+
+/** The worktree containing `cwd` (longest matching path wins), if any. */
+function currentWorktree(
+  entries: Worktree[],
+  cwd: string = realpathOrSame(process.cwd()),
+): Worktree | undefined {
+  let best: Worktree | undefined;
+  for (const w of entries) {
+    if (cwd === w.path || cwd.startsWith(w.path + "/")) {
+      if (!best || w.path.length > best.path.length) best = w;
+    }
+  }
+  return best;
 }
 
 function realpathOrSame(p: string): string {
@@ -138,34 +208,36 @@ function realpathOrSame(p: string): string {
 }
 
 async function cmdSwitch(args: string[], env: Env): Promise<void> {
-  const target = args[0];
-  if (!target) die("usage: wt switch <branch|path>");
-  const resolved = realpathOrSame(target);
+  const { placement, rest } = parsePlacement(args);
+  const target = rest[0];
   const entries = await getWorktrees(env);
+  if (!target) {
+    // No target: re-open the worktree we're already in — `wt switch $(wt current)`.
+    const here = currentWorktree(entries);
+    if (!here) die("not inside a worktree (and no <branch|path> given)");
+    await switchTo(here.path, env, placement);
+    return;
+  }
+  const resolved = realpathOrSame(target);
   const match = entries.find(
     (w) =>
       w.branch === target || w.path === target || w.path === resolved,
   );
   if (!match) die(`worktree '${target}' not found`);
-  await switchTo(match.path, env);
+  await switchTo(match.path, env, placement);
 }
 
-async function cmdRoot(_args: string[], env: Env): Promise<void> {
+async function cmdRoot(args: string[], env: Env): Promise<void> {
+  const { placement } = parsePlacement(args);
   const entries = await getWorktrees(env);
   const main = entries[0];
   if (!main) die("no worktrees found");
-  await switchTo(main.path, env);
+  await switchTo(main.path, env, placement);
 }
 
 async function cmdCurrent(_args: string[], env: Env): Promise<void> {
   const entries = await getWorktrees(env);
-  const cwd = realpathOrSame(process.cwd());
-  let best: Worktree | undefined;
-  for (const w of entries) {
-    if (cwd === w.path || cwd.startsWith(w.path + "/")) {
-      if (!best || w.path.length > best.path.length) best = w;
-    }
-  }
+  const best = currentWorktree(entries);
   if (!best) process.exit(1);
   process.stdout.write(best.path + "\n");
 }
