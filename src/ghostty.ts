@@ -56,6 +56,34 @@ export function buildGhosttyScript(
   return lines.join("\n");
 }
 
+/**
+ * Expand a command's executable to an absolute path via `lookup`.
+ *
+ * Ghostty runs the surface command through a non-login shell (`bash -c "exec
+ * <cmd>"`), and because Ghostty is launched via AppleScript `activate` it
+ * inherits the macOS GUI launch PATH (/usr/bin:/bin:...) rather than your
+ * interactive shell PATH. A bare `nvim` therefore fails with
+ * `exec nvim: not found`. `wt` runs from your shell with the full PATH, so we
+ * resolve the binary here and hand Ghostty an absolute path.
+ *
+ * The first whitespace-delimited token is treated as the executable; any
+ * arguments are preserved. A command whose executable already contains a slash,
+ * or that can't be found via `lookup`, is returned unchanged.
+ */
+export function absolutizeCmd(
+  cmd: string,
+  lookup: (bin: string) => string | null,
+): string {
+  const trimmed = cmd.trim();
+  if (!trimmed) return cmd;
+  const sp = trimmed.search(/\s/);
+  const bin = sp === -1 ? trimmed : trimmed.slice(0, sp);
+  if (bin.includes("/")) return trimmed;
+  const resolved = lookup(bin);
+  if (!resolved) return trimmed;
+  return sp === -1 ? resolved : resolved + trimmed.slice(sp);
+}
+
 export function buildGhosttyCmd(
   args: SwitchArgs,
   placement: GhosttyPlacement,

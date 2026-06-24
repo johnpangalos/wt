@@ -3,6 +3,7 @@ import { listWorktrees, repoRoot } from "./git";
 import { listAgents, matchAgents, type AgentSession } from "./agents";
 import type { Worktree } from "./types";
 import {
+  absolutizeCmd,
   buildGhosttyCmd,
   spawnGhostty,
   type Env,
@@ -72,7 +73,8 @@ function agentStatus(agent: AgentSession): string {
 }
 
 function resolveCmd(env: Env): string {
-  return env.WT_CMD || env.EDITOR || "vi";
+  const cmd = env.WT_CMD || env.EDITOR || "vi";
+  return absolutizeCmd(cmd, (bin) => Bun.which(bin, { PATH: env.PATH }));
 }
 
 const GHOSTTY_PLACEMENTS: GhosttyPlacement[] = [

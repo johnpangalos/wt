@@ -93,7 +93,7 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. |
+| `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. Its executable is resolved to an absolute path before being handed to Ghostty (see below). |
 | `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
 
@@ -102,6 +102,15 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 `--split-right`, `--split-left`, `--split-down`, `--split-up`, `--split` (alias
 for `--split-right`), or `--placement <name>` / `-p <name>` for any of those
 names.
+
+> **`exec nvim: not found`?** Ghostty runs the surface command through a
+> non-login shell, and because it's launched via AppleScript `activate` it
+> inherits the macOS GUI launch `PATH` (`/usr/bin:/bin:…`), not your interactive
+> shell `PATH`. A bare `nvim` installed under `/opt/homebrew/bin` would then fail
+> to launch. `wt` runs from your shell with the full `PATH`, so it resolves the
+> `WT_CMD`/`$EDITOR` executable to an absolute path before handing it to Ghostty.
+> A command that already contains a `/`, or whose executable isn't on your
+> `PATH`, is passed through unchanged.
 
 The `split-*` placements split the focused terminal of Ghostty's front window in
 that direction, so they only do something useful when a Ghostty window already

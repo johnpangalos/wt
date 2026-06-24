@@ -372,7 +372,23 @@ describe("cli: switch", () => {
     expect(r.stderr).toMatch(/WT_GHOSTTY_PLACEMENT/);
   });
 
-  it("WT_CMD overrides default editor", async () => {
+  it("WT_CMD overrides default editor and resolves to an absolute path", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript", "special-thing"]);
+    const r = await runCli(BIN, ["switch", "feat"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_CMD: "special-thing" },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain(
+      `set command of cfg to "${fake.dir}/special-thing"`,
+    );
+  });
+
+  it("WT_CMD is left unresolved when its executable isn't on PATH", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
@@ -380,10 +396,12 @@ describe("cli: switch", () => {
     const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), WT_CMD: "special-thing" },
+      env: { ...baseEnv(fake), WT_CMD: "not-a-real-binary-xyz" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain('set command of cfg to "special-thing"');
+    expect(readLog(fake.log)).toContain(
+      'set command of cfg to "not-a-real-binary-xyz"',
+    );
   });
 
   it("$EDITOR is used when WT_CMD is unset", async () => {
@@ -391,13 +409,15 @@ describe("cli: switch", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["osascript"]);
+    const fake = fakeBin(["osascript", "hx"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
       env: { ...baseEnv(fake), EDITOR: "hx" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain('set command of cfg to "hx"');
+    expect(readLog(fake.log)).toContain(
+      `set command of cfg to "${fake.dir}/hx"`,
+    );
   });
 
   it("falls back to vi when WT_CMD and $EDITOR are unset", async () => {
@@ -405,13 +425,15 @@ describe("cli: switch", () => {
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["osascript"]);
+    const fake = fakeBin(["osascript", "vi"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
       env: baseEnv(fake),
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain('set command of cfg to "vi"');
+    expect(readLog(fake.log)).toContain(
+      `set command of cfg to "${fake.dir}/vi"`,
+    );
   });
 });
 
