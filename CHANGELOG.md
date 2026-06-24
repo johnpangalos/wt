@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/johnpangalos/wt/compare/wt-v0.3.0...wt-v0.3.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* **update:** use gh CLI for release check to avoid 403 rate limits ([#28](https://github.com/johnpangalos/wt/issues/28)) ([eaa5861](https://github.com/johnpangalos/wt/commit/eaa5861ae76c361af1159c3692064652b34b18d6))
+
 ## [0.3.0](https://github.com/johnpangalos/wt/compare/wt-v0.2.0...wt-v0.3.0) (2026-06-24)
 
 
