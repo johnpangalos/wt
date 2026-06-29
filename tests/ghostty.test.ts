@@ -3,6 +3,7 @@ import {
   buildGhosttyScript,
   buildGhosttyCmd,
   absolutizeCmd,
+  isBenignGhosttyError,
 } from "../src/ghostty";
 
 const args = { path: "/r/feat", cmd: "nvim" };
@@ -83,6 +84,33 @@ describe("ghostty.absolutizeCmd", () => {
   it("returns an empty command unchanged", () => {
     expect(absolutizeCmd("", lookup)).toBe("");
     expect(absolutizeCmd("   ", lookup)).toBe("   ");
+  });
+});
+
+describe("ghostty.isBenignGhosttyError", () => {
+  it("treats Ghostty's -1708 'Can't continue new tab' as benign", () => {
+    expect(
+      isBenignGhosttyError(
+        "243:273: execution error: Ghostty got an error: Can't continue new tab. (-1708)",
+      ),
+    ).toBe(true);
+  });
+
+  it("treats the same quirk for new window as benign", () => {
+    expect(
+      isBenignGhosttyError(
+        "execution error: Ghostty got an error: Can't continue new window. (-1708)",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not swallow other AppleScript errors", () => {
+    expect(
+      isBenignGhosttyError(
+        "execution error: Ghostty got an error: Can't get terminal 1 of front window. (-1728)",
+      ),
+    ).toBe(false);
+    expect(isBenignGhosttyError("osascript: command not found")).toBe(false);
   });
 });
 
