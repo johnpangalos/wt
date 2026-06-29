@@ -500,7 +500,10 @@ describe("cli: version and update", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "wt-state-"));
     mkdirSync(join(stateDir, "wt"), { recursive: true });
     const [major = "0", minor = "0", patch = "0"] = pkg.version.split(".");
-    const bumped = `v${major}.${minor}.${Number(patch) + 1}`;
+    const version = `${major}.${minor}.${Number(patch) + 1}`;
+    // Cache stores the real release tag, which carries release-please's
+    // "wt-v" component prefix — the nag must still recognize it as newer.
+    const bumped = `wt-v${version}`;
     writeFileSync(
       join(stateDir, "wt", "update-check"),
       `${Date.now()}\t${bumped}\n`,
@@ -516,12 +519,12 @@ describe("cli: version and update", () => {
     });
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toMatch(/update available/);
-    expect(r.stderr).toContain(bumped.slice(1));
+    expect(r.stderr).toContain(version);
   });
 
   it("update reports up to date using the gh release tag", async () => {
     const fake = fakeBin([]);
-    fakeGhBin(fake.dir, `v${pkg.version}`);
+    fakeGhBin(fake.dir, `wt-v${pkg.version}`);
     const r = await runCli(BIN, ["update"], {
       env: {
         PATH: `${fake.dir}:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin`,
