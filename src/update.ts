@@ -46,7 +46,13 @@ function writeCache(p: string, entry: CacheEntry): void {
 }
 
 function stripV(tag: string): string {
-  return tag.startsWith("v") ? tag.slice(1) : tag;
+  // Releases are tagged with release-please's component prefix, e.g.
+  // "wt-v0.3.2". Normalize "wt-v…", "wt-…", "v…", or a bare "X.Y.Z" down to
+  // the plain version string so version comparison sees only digits.
+  let t = tag.trim();
+  if (t.startsWith("wt-")) t = t.slice(3);
+  if (t.startsWith("v")) t = t.slice(1);
+  return t;
 }
 
 export function isNewer(latest: string, current: string): boolean {
