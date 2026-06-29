@@ -91,11 +91,28 @@ export function buildGhosttyCmd(
   return ["osascript", "-e", buildGhosttyScript(args, placement)];
 }
 
+/**
+ * Whether an osascript failure is Ghostty's benign "command not handled" quirk.
+ *
+ * Ghostty's AppleScript `new tab` (and `new window`) handlers carry out the
+ * action but return `errAEEventNotHandled` (-1708), so osascript exits non-zero
+ * and prints e.g. `Ghostty got an error: Can't continue new tab. (-1708)` even
+ * though the tab/window actually opened. Detect that signature so we don't
+ * report a failure for an operation that succeeded.
+ */
+export function isBenignGhosttyError(stderr: string): boolean {
+  return /\(-1708\)/.test(stderr) && /Can.t continue/.test(stderr);
+}
+
 export async function spawnGhostty(argv: string[]): Promise<void> {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new Error("empty ghostty argv");
   const proc = Bun.spawn([cmd, ...rest], { stdout: "pipe", stderr: "pipe" });
   const stderr = await new Response(proc.stderr).text();
   const code = await proc.exited;
-  if (code !== 0) throw new Error(stderr.trim() || `${cmd} exited ${code}`);
+  if (code !== 0) {
+    const msg = stderr.trim();
+    if (isBenignGhosttyError(msg)) return;
+    throw new Error(msg || `${cmd} exited ${code}`);
+  }
 }

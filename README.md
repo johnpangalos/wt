@@ -118,6 +118,12 @@ exists. `new-tab` (the default) and `new-window` always work — AppleScript
 launches Ghostty first if it isn't running. A new tab joins the front window if
 one is open, or opens the first window otherwise.
 
+> **Note:** Ghostty's `new tab`/`new window` AppleScript handlers open the
+> surface but return `errAEEventNotHandled` (-1708), so `osascript` exits
+> non-zero with `Ghostty got an error: Can't continue new tab. (-1708)` even
+> though the tab opened. `wt` recognizes that benign signature and treats it as
+> success, so the spurious error no longer surfaces.
+
 > **Tab/window titles:** Ghostty's AppleScript surface configuration exposes the
 > working directory and command but not a settable title, so `wt` doesn't name
 > the window/tab after the branch (the old tmux `-n` behavior). Ghostty titles
