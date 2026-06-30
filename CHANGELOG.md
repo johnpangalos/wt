@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.3](https://github.com/johnpangalos/wt/compare/wt-v0.3.2...wt-v0.3.3) (2026-06-29)
+
+
+### Bug Fixes
+
+* **switch:** ignore Ghostty's benign -1708 "Can't continue new tab" error ([#32](https://github.com/johnpangalos/wt/issues/32)) ([b87c549](https://github.com/johnpangalos/wt/commit/b87c54942869e6fdf7515710f9a80b7d915cb42b))
+* **update:** recognize release-please "wt-v" tag prefix ([#34](https://github.com/johnpangalos/wt/issues/34)) ([1f0ae3e](https://github.com/johnpangalos/wt/commit/1f0ae3edaf2099e140d1bfe12fb97d58bd6023cd))
+
 ## [0.3.2](https://github.com/johnpangalos/wt/compare/wt-v0.3.1...wt-v0.3.2) (2026-06-24)
 
 
