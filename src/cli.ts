@@ -12,6 +12,7 @@ import {
 } from "./mux";
 import { resolveMuxTarget } from "./session";
 import { VERSION, cmdUpdate, maybeNag, refreshCache } from "./update";
+import { cmdAnimate } from "./animate";
 
 const USAGE = `wt — worktree helper
 
@@ -209,6 +210,12 @@ async function main(): Promise<void> {
       const code = await cmdUpdate(env);
       process.exit(code);
     }
+    // Easter eggs — deliberately absent from USAGE. Quack.
+    case "animate":
+      return cmdAnimate(argv.slice(1));
+    // The sequel: this one starts before the duck can swim.
+    case "animate2":
+      return cmdAnimate(["egg", ...argv.slice(1)]);
     default:
       die(`unknown command: ${sub} (try: wt --help)`);
   }
