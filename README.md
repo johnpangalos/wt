@@ -182,3 +182,7 @@ Releases are automated by [release-please](https://github.com/googleapis/release
 - `chore:`, `docs:`, `refactor:`, `test:`, `ci:`, `build:`, `perf:` — no bump; may appear in the changelog
 
 release-please opens a `chore(main): release X.Y.Z` PR that bumps `package.json` and updates `CHANGELOG.md`. Merging that PR tags the release and the binary-upload workflow publishes `wt-darwin-arm64` and `SHA256SUMS` to the GitHub Release.
+
+## License
+
+[MIT](LICENSE)
