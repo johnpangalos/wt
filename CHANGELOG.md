@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/johnpangalos/wt/compare/wt-v0.3.3...wt-v0.4.0) (2026-07-02)
+
+
+### Features
+
+* add hidden wt animate easter eggs (duck pond, crab, hatching egg) ([#37](https://github.com/johnpangalos/wt/issues/37)) ([dd6a369](https://github.com/johnpangalos/wt/commit/dd6a3695c935c14ecd98cbcd466abfef3aa9b5ea))
+
 ## [0.3.3](https://github.com/johnpangalos/wt/compare/wt-v0.3.2...wt-v0.3.3) (2026-06-29)
 
 
