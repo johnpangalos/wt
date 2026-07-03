@@ -185,4 +185,4 @@ release-please opens a `chore(main): release X.Y.Z` PR that bumps `package.json`
 
 ## License
 
-[MIT](LICENSE)
+Released into the public domain under the [Unlicense](LICENSE).
