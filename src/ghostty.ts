@@ -9,6 +9,8 @@ export type GhosttyPlacement =
 export type SwitchArgs = {
   path: string;
   cmd: string;
+  /** Optional tab/window title; emitted via an OSC 2 sequence (see `wrapCmdWithTitle`). */
+  title?: string;
 };
 
 export type Env = Record<string, string | undefined>;
@@ -16,6 +18,41 @@ export type Env = Record<string, string | undefined>;
 /** Quote a string as an AppleScript double-quoted literal, escaping `\` and `"`. */
 function asString(s: string): string {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** POSIX single-quote a string so it survives as one literal shell word. */
+function shSingleQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Strip control characters (incl. ESC/BEL/newlines) from a title.
+ *
+ * The title is written verbatim inside an OSC 2 sequence; a stray ESC or BEL
+ * would terminate it early and let the rest bleed into the terminal stream.
+ */
+function sanitizeTitle(title: string): string {
+  // eslint-disable-next-line no-control-regex
+  return title.replace(/[\x00-\x1f\x7f]/g, "");
+}
+
+/**
+ * Wrap `cmd` so the surface sets its tab/window title before running `cmd`.
+ *
+ * Ghostty's AppleScript surface configuration has no settable title, so we set
+ * it the way any program does: write an `OSC 2 ; <title> BEL` sequence, then
+ * exec the real command. Ghostty runs the surface command as `bash -c "exec
+ * <cmd>"`, so the outer exec hands straight off to this bash — it prints the
+ * title and execs the editor, leaving no extra shell behind.
+ *
+ * `printf` (inside the surface) interprets the `\033`/`\007` escapes, so the
+ * literal backslashes just need to survive AppleScript quoting, which they do.
+ * The title only sticks for programs that don't set their own (e.g. editors);
+ * a shell with a prompt title hook will overwrite it.
+ */
+export function wrapCmdWithTitle(cmd: string, title: string): string {
+  const script = `printf '\\033]2;%s\\007' ${shSingleQuote(sanitizeTitle(title))}; exec ${cmd}`;
+  return `/bin/bash -c ${shSingleQuote(script)}`;
 }
 
 /**
@@ -37,7 +74,10 @@ export function buildGhosttyScript(
     `  set initial working directory of cfg to ${asString(args.path)}`,
   ];
   if (args.cmd) {
-    lines.push(`  set command of cfg to ${asString(args.cmd)}`);
+    const cmd = args.title
+      ? wrapCmdWithTitle(args.cmd, args.title)
+      : args.cmd;
+    lines.push(`  set command of cfg to ${asString(cmd)}`);
   }
 
   if (placement === "new-window") {
