@@ -148,9 +148,33 @@ same whether `wt` runs inside a Ghostty terminal or from somewhere with no TTY
 at all (Claude Code's Bash tool, a launchd job, a script) — there's no session
 to find or cache. If Ghostty isn't open, `activate` launches it.
 
-## From Claude Code
+## Agent skill (Claude Code & friends)
 
-Drop [`claude/commands/wt.md`](claude/commands/wt.md) into `~/.claude/commands/` for a `/wt` slash command. Typical flow:
+`wt` ships an [agent skill](skills/wt/SKILL.md) that teaches coding agents when
+and how to use the CLI (e.g. after `git worktree add`, run `wt switch <branch>`
+so a Ghostty tab pops open for you). Install it with Vercel's
+[`skills` CLI](https://github.com/vercel-labs/skills):
+
+```sh
+npx skills add johnpangalos/wt
+```
+
+The interactive prompt lets you pick which agents to install into (Claude Code,
+Cursor, Codex, OpenCode, and many more). Non-interactive, e.g. for Claude Code
+user-wide:
+
+```sh
+npx skills add johnpangalos/wt -a claude-code -g -y
+```
+
+Prefer manual installation? Copy the skill folder into your agent's skills
+directory, e.g. for Claude Code:
+
+```sh
+cp -R skills/wt ~/.claude/skills/wt
+```
+
+In Claude Code the skill is also user-invocable as `/wt`. Typical flow:
 
 ```
 $ git worktree add ../repo-feat -b feat
