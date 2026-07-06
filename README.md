@@ -95,6 +95,7 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 |---|---|---|
 | `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. Its executable is resolved to an absolute path before being handed to Ghostty (see below). |
 | `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
+| `WT_NO_TITLE` | — | set to any value to stop naming the tab/window after the branch (see below). |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
 
 `wt switch` and `wt root` also take a placement flag that overrides
@@ -124,10 +125,15 @@ one is open, or opens the first window otherwise.
 > though the tab opened. `wt` recognizes that benign signature and treats it as
 > success, so the spurious error no longer surfaces.
 
-> **Tab/window titles:** Ghostty's AppleScript surface configuration exposes the
-> working directory and command but not a settable title, so `wt` doesn't name
-> the window/tab after the branch (the old tmux `-n` behavior). Ghostty titles
-> surfaces from the running program / shell instead.
+> **Tab/window titles:** Ghostty's AppleScript surface configuration has no
+> settable title, so `wt` names the tab the way any program does — it wraps the
+> surface command to emit an `OSC 2 ; <branch> BEL` sequence before exec-ing your
+> editor (`/bin/bash -c 'printf "\033]2;branch\007"; exec nvim'`). The title is
+> the branch name, or the worktree's directory name for a detached/bare checkout.
+> It sticks for programs that leave the title alone (most editors, e.g. Neovim
+> with its default `title` off); a shell with a prompt title hook will overwrite
+> it. Set `WT_NO_TITLE` to any value to turn this off and let Ghostty title
+> surfaces from the running program instead.
 
 ## How it works (AppleScript)
 

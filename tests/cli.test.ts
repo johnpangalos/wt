@@ -380,7 +380,7 @@ describe("cli: switch", () => {
     const fake = fakeBin(["osascript", "special-thing"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), WT_CMD: "special-thing" },
+      env: { ...baseEnv(fake), WT_CMD: "special-thing", WT_NO_TITLE: "1" },
     });
     expect(r.exitCode).toBe(0);
     expect(readLog(fake.log)).toContain(
@@ -396,7 +396,7 @@ describe("cli: switch", () => {
     const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), WT_CMD: "not-a-real-binary-xyz" },
+      env: { ...baseEnv(fake), WT_CMD: "not-a-real-binary-xyz", WT_NO_TITLE: "1" },
     });
     expect(r.exitCode).toBe(0);
     expect(readLog(fake.log)).toContain(
@@ -412,7 +412,7 @@ describe("cli: switch", () => {
     const fake = fakeBin(["osascript", "hx"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: { ...baseEnv(fake), EDITOR: "hx" },
+      env: { ...baseEnv(fake), EDITOR: "hx", WT_NO_TITLE: "1" },
     });
     expect(r.exitCode).toBe(0);
     expect(readLog(fake.log)).toContain(
@@ -428,12 +428,49 @@ describe("cli: switch", () => {
     const fake = fakeBin(["osascript", "vi"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: baseEnv(fake),
+      env: { ...baseEnv(fake), WT_NO_TITLE: "1" },
     });
     expect(r.exitCode).toBe(0);
     expect(readLog(fake.log)).toContain(
       `set command of cfg to "${fake.dir}/vi"`,
     );
+  });
+
+  it("names the tab after the branch by default (wraps cmd with an OSC 2 title)", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript", "hx"]);
+    const r = await runCli(BIN, ["switch", "feat"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), EDITOR: "hx" },
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    // The surface command emits the branch as an OSC 2 title, then execs the editor.
+    expect(log).toContain("/bin/bash -c");
+    expect(log).toContain("]2;%s");
+    expect(log).toContain("'feat'");
+    expect(log).toContain(`exec ${fake.dir}/hx`);
+    // ...and not the bare, un-wrapped editor command.
+    expect(log).not.toContain(`set command of cfg to "${fake.dir}/hx"`);
+  });
+
+  it("WT_NO_TITLE leaves the command un-wrapped", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript", "hx"]);
+    const r = await runCli(BIN, ["switch", "feat"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), EDITOR: "hx", WT_NO_TITLE: "1" },
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    expect(log).toContain(`set command of cfg to "${fake.dir}/hx"`);
+    expect(log).not.toContain("/bin/bash -c");
   });
 });
 

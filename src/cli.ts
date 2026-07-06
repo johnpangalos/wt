@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { basename } from "node:path";
 import { listWorktrees, repoRoot } from "./git";
 import { listAgents, matchAgents, type AgentSession } from "./agents";
 import type { Worktree } from "./types";
@@ -38,6 +39,7 @@ Environment:
   WT_CMD                command to spawn (default: $EDITOR or vi)
   WT_GHOSTTY_PLACEMENT  new-tab (default) | new-window |
                         split-right | split-left | split-down | split-up
+  WT_NO_TITLE           set to any value to stop naming the tab after the branch
   WT_NO_UPDATE_CHECK    set to any value to disable the background update check
 `;
 
@@ -173,13 +175,24 @@ async function cmdList(args: string[], env: Env): Promise<void> {
   }
 }
 
+/** The tab title for a worktree: its branch, or the dir basename otherwise. */
+function worktreeTitle(w: Worktree): string {
+  if (!w.detached && !w.bare && w.branch) return w.branch;
+  return basename(w.path);
+}
+
 async function switchTo(
-  path: string,
+  w: Worktree,
   env: Env,
   placement?: GhosttyPlacement,
 ): Promise<void> {
   const cmd = resolveCmd(env);
-  const argv = buildGhosttyCmd({ path, cmd }, ghosttyPlacement(env, placement));
+  // Name the tab after the branch by default; WT_NO_TITLE opts out.
+  const title = env.WT_NO_TITLE ? undefined : worktreeTitle(w);
+  const argv = buildGhosttyCmd(
+    { path: w.path, cmd, title },
+    ghosttyPlacement(env, placement),
+  );
   try {
     await spawnGhostty(argv);
   } catch (e) {
@@ -217,7 +230,7 @@ async function cmdSwitch(args: string[], env: Env): Promise<void> {
     // No target: re-open the worktree we're already in — `wt switch $(wt current)`.
     const here = currentWorktree(entries);
     if (!here) die("not inside a worktree (and no <branch|path> given)");
-    await switchTo(here.path, env, placement);
+    await switchTo(here, env, placement);
     return;
   }
   const resolved = realpathOrSame(target);
@@ -226,7 +239,7 @@ async function cmdSwitch(args: string[], env: Env): Promise<void> {
       w.branch === target || w.path === target || w.path === resolved,
   );
   if (!match) die(`worktree '${target}' not found`);
-  await switchTo(match.path, env, placement);
+  await switchTo(match, env, placement);
 }
 
 async function cmdRoot(args: string[], env: Env): Promise<void> {
@@ -234,7 +247,7 @@ async function cmdRoot(args: string[], env: Env): Promise<void> {
   const entries = await getWorktrees(env);
   const main = entries[0];
   if (!main) die("no worktrees found");
-  await switchTo(main.path, env, placement);
+  await switchTo(main, env, placement);
 }
 
 async function cmdCurrent(_args: string[], env: Env): Promise<void> {
