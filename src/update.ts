@@ -1,4 +1,14 @@
-import { readFileSync, writeFileSync, mkdirSync, openSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  chmodSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { ReadStream, WriteStream } from "node:tty";
 import { createInterface } from "node:readline/promises";
@@ -9,7 +19,8 @@ export const VERSION: string = pkg.version;
 
 const REPO = "johnpangalos/wt";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const INSTALL_URL = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
+const RELEASE_BASE = `https://github.com/${REPO}/releases/download`;
+const SUMS_NAME = "SHA256SUMS";
 
 export type UpdateEnv = {
   HOME?: string;
@@ -171,6 +182,184 @@ async function promptYes(): Promise<boolean> {
   }
 }
 
+/**
+ * Release asset for a platform. Mirrors the platform gate in install.sh —
+ * only one build is published, so anything else is a hard failure rather than
+ * a guess at an asset name that does not exist.
+ */
+export function assetName(
+  platform: string = process.platform,
+  arch: string = process.arch,
+): string {
+  if (platform === "darwin" && arch === "arm64") return "wt-darwin-arm64";
+  if (platform === "darwin") {
+    throw new Error(
+      `macOS ${arch} is not supported; build from source: https://github.com/${REPO}#build-from-source`,
+    );
+  }
+  if (platform === "linux") {
+    throw new Error("wt drives Ghostty via AppleScript and only runs on macOS");
+  }
+  throw new Error(`unsupported platform: ${platform}/${arch} (wt is macOS-only)`);
+}
+
+/**
+ * Pull one asset's expected digest out of a `sha256sum`-generated SHA256SUMS.
+ *
+ * Format is `<64 hex><two spaces><filename>` (or `<hex> *<filename>` in binary
+ * mode). The filename is compared for exact equality — a prefix match would
+ * happily accept the digest of a *different* asset whose name merely starts
+ * the same way.
+ */
+export function parseSha256Sums(text: string, asset: string): string | null {
+  for (const raw of text.split("\n")) {
+    const line = raw.trimEnd();
+    const m = /^([0-9a-fA-F]{64}) [ *](.+)$/.exec(line);
+    if (!m || !m[1] || !m[2]) continue;
+    if (m[2] === asset) return m[1].toLowerCase();
+  }
+  return null;
+}
+
+async function fetchBytes(url: string): Promise<Uint8Array> {
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new Error(`${url}: ${(e as Error).message}`);
+  }
+  if (!res.ok) {
+    const status = `${res.status}${res.statusText ? ` ${res.statusText}` : ""}`;
+    throw new Error(`${url}: HTTP ${status}`);
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(bytes);
+  return hasher.digest("hex").toLowerCase();
+}
+
+/** Test seams — production callers pass nothing. */
+export type InstallOptions = {
+  /** Base URL for `<base>/<tag>/<asset>`. Defaults to the GitHub release CDN. */
+  baseUrl?: string;
+  /** Binary to replace. Defaults to the running executable. */
+  target?: string;
+  platform?: string;
+  arch?: string;
+};
+
+/**
+ * Download the release binary, verify its SHA256 against the release's
+ * SHA256SUMS, and atomically replace the running executable.
+ *
+ * Done in-process on purpose: the previous implementation fetched install.sh
+ * from the tip of `main` and ran it under `sh`, which made every `wt update`
+ * trust whatever that branch happened to contain — including the checksum
+ * check itself, the first thing an attacker with write access would delete.
+ * install.sh remains for bootstrapping a machine that has no `wt` yet.
+ *
+ * Note the guarantee this does and does not give: the digest proves the bytes
+ * arrived intact from the release, not that the release is authentic. Whoever
+ * can publish a release can publish a matching SHA256SUMS; only signing or
+ * build attestation closes that, and neither exists for this repo yet.
+ */
+export async function installRelease(
+  tag: string,
+  opts: InstallOptions = {},
+): Promise<number> {
+  let asset: string;
+  try {
+    asset = assetName(opts.platform, opts.arch);
+  } catch (e) {
+    process.stderr.write(`wt: ${(e as Error).message}\n`);
+    return 1;
+  }
+
+  // Replace the real file, not a symlink pointing at it — renaming over the
+  // link would silently detach the user's `wt` from wherever it points. If
+  // realpath fails (dangling/unreadable path) fall back to execPath: updating
+  // the path we were actually invoked as beats aborting.
+  let target = opts.target;
+  if (!target) {
+    try {
+      target = realpathSync(process.execPath);
+    } catch {
+      target = process.execPath;
+    }
+  }
+  const dir = dirname(target);
+  const base = opts.baseUrl ?? RELEASE_BASE;
+
+  // Staged in the target's own directory: rename(2) is only atomic within a
+  // filesystem, and ~/.local/bin is very often on a different mount from /tmp
+  // (which would fail with EXDEV). The random suffix keeps the path
+  // unpredictable, so it cannot be pre-created as a symlink.
+  const tmp = join(dir, `.wt-update-${randomBytes(8).toString("hex")}`);
+
+  try {
+    process.stdout.write(`installing wt ${tag}...\n`);
+    let bin: Uint8Array;
+    let sumsText: string;
+    try {
+      const [binBytes, sumsBytes] = await Promise.all([
+        fetchBytes(`${base}/${tag}/${asset}`),
+        fetchBytes(`${base}/${tag}/${SUMS_NAME}`),
+      ]);
+      bin = binBytes;
+      sumsText = new TextDecoder().decode(sumsBytes);
+    } catch (e) {
+      process.stderr.write(`wt: download failed: ${(e as Error).message}\n`);
+      return 1;
+    }
+
+    const expected = parseSha256Sums(sumsText, asset);
+    if (!expected) {
+      process.stderr.write(
+        `wt: no ${SUMS_NAME} entry for ${asset} in release ${tag} — refusing to install\n`,
+      );
+      return 1;
+    }
+
+    const actual = sha256Hex(bin);
+    if (actual !== expected) {
+      process.stderr.write(
+        `wt: CHECKSUM MISMATCH for ${asset} — refusing to install\n` +
+          `    expected ${expected}\n` +
+          `    actual   ${actual}\n` +
+          `    the download was corrupted or tampered with; nothing was changed\n`,
+      );
+      return 1;
+    }
+
+    // Past this point, and only past this point, the bytes are verified.
+    try {
+      writeFileSync(tmp, bin, { mode: 0o755 });
+      chmodSync(tmp, 0o755); // writeFileSync's mode is masked by umask
+      renameSync(tmp, target);
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === "EACCES" || err.code === "EPERM" || err.code === "EROFS") {
+        process.stderr.write(
+          `wt: cannot replace ${target}: ${dir} is not writable by this user\n` +
+            `    re-run with permission to write there (e.g. sudo wt update), or reinstall wt under a writable prefix\n`,
+        );
+      } else {
+        process.stderr.write(`wt: failed to install ${target}: ${err.message}\n`);
+      }
+      return 1;
+    }
+
+    process.stdout.write(`installed: ${target}\n`);
+    return 0;
+  } finally {
+    // No-op once the rename has consumed it; cleans up every failure path.
+    rmSync(tmp, { force: true });
+  }
+}
+
 export async function cmdUpdate(env: UpdateEnv): Promise<number> {
   let tag: string;
   try {
@@ -201,12 +390,7 @@ export async function cmdUpdate(env: UpdateEnv): Promise<number> {
     return 0;
   }
 
-  const binDir = dirname(process.execPath);
-  const prefix = dirname(binDir);
-  const result = await $`curl -fsSL ${INSTALL_URL} | sh`
-    .env({ ...(process.env as Record<string, string>), PREFIX: prefix })
-    .nothrow();
-  const code = result.exitCode;
+  const code = await installRelease(tag);
   if (code === 0) {
     const p = cachePath(env);
     if (p) {
