@@ -833,4 +833,61 @@ describe("cli: version and update", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toBe("");
   });
+
+  // The cache lives wherever $XDG_STATE_HOME points, and its tag is printed to
+  // the terminal on every invocation — so a malformed entry must never reach
+  // stderr verbatim. `nagWithCachedTag` writes one and runs `wt --help` with an
+  // empty PATH, so the background refresh the rejection triggers finds no `gh`
+  // and dies quietly instead of reaching the network.
+  async function nagWithCachedTag(tag: string, ts: number = Date.now()) {
+    const stateDir = mkdtempSync(join(tmpdir(), "wt-state-"));
+    mkdirSync(join(stateDir, "wt"), { recursive: true });
+    writeFileSync(join(stateDir, "wt", "update-check"), `${ts}\t${tag}\n`);
+    const empty = fakeBin([]);
+    return runCli(BIN, ["--help"], {
+      env: {
+        PATH: empty.dir,
+        HOME: process.env.HOME ?? "",
+        XDG_STATE_HOME: stateDir,
+        WT_NO_UPDATE_CHECK: "",
+      },
+    });
+  }
+
+  it("nag rejects a cached tag carrying control characters", async () => {
+    // Both payloads claim major version 99, so an unvalidated cache would
+    // consider them newer and print them.
+    for (const tag of [
+      "wt-v99.0.0\x1b[31mPWNED\x1b[0m",
+      "wt-v99.0.0\nwt: totally legitimate second line",
+    ]) {
+      const r = await nagWithCachedTag(tag);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).not.toMatch(/update available/);
+      expect(r.stderr).not.toContain("\x1b");
+      expect(r.stderr).not.toContain("PWNED");
+      expect(r.stderr).not.toContain("second line");
+    }
+  });
+
+  it("nag rejects an over-long cached tag", async () => {
+    const r = await nagWithCachedTag(`wt-v${"9".repeat(80)}`);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toMatch(/update available/);
+    expect(r.stderr).not.toContain("999");
+  });
+
+  it("nag rejects a far-future cached timestamp", async () => {
+    const r = await nagWithCachedTag("wt-v99.0.0", Date.now() + 365 * 24 * 60 * 60 * 1000);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toMatch(/update available/);
+  });
+
+  it("nag still fires for a well-formed cached tag", async () => {
+    const r = await nagWithCachedTag("wt-v99.0.0");
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toMatch(/update available/);
+    expect(r.stderr).toContain("99.0.0");
+    expect(r.stderr).not.toContain("\x1b");
+  });
 });
