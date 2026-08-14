@@ -156,6 +156,64 @@ describe("cli: agent-aware list", () => {
     expect(mainObj.flags).not.toContain("agent");
   });
 
+  it("strips control characters from agent name and status in plain-text rows", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin([]);
+    fakeClaudeBin(
+      fake.dir,
+      JSON.stringify([
+        {
+          cwd: feat,
+          name: "\u001b]1337;X=y\\evil",
+          status: "ok\u000d\u000aFAKE\u0009ROW",
+        },
+      ]),
+    );
+    const r = await runCli(BIN, ["list"], { cwd: repo, env: baseEnv(fake) });
+    expect(r.exitCode).toBe(0);
+    // no forged row: still one line per worktree, each with the same column count
+    const lines = r.stdout.split("\u000a").filter(Boolean);
+    expect(lines.length).toBe(2);
+    const featRow = lines.find((l) => l.startsWith(feat))!;
+    expect(featRow).toBeDefined();
+    const cols = featRow.split("\t");
+    expect(cols.length).toBe(5);
+    expect(cols[3]).toBe("]1337;X=y\\evil");
+    expect(cols[4]).toBe("okFAKEROW");
+    expect(r.stdout).not.toContain("\u001b");
+    expect(r.stdout).not.toContain("\u000d");
+  });
+
+  it("list --json escapes the same control characters instead of stripping them", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin([]);
+    fakeClaudeBin(
+      fake.dir,
+      JSON.stringify([
+        {
+          cwd: feat,
+          name: "\u001b]1337;X=y\\evil",
+          status: "ok\u000d\u000aFAKE\u0009ROW",
+        },
+      ]),
+    );
+    const r = await runCli(BIN, ["list", "--json"], { cwd: repo, env: baseEnv(fake) });
+    expect(r.exitCode).toBe(0);
+    // control bytes are JSON-escaped on the wire, never emitted raw
+    expect(r.stdout).toContain("\\u001b");
+    expect(r.stdout).not.toContain("\u001b");
+    const data = JSON.parse(r.stdout) as Array<Record<string, unknown>>;
+    const featObj = data.find((o) => o.path === feat)!;
+    expect(featObj.name).toBe("\u001b]1337;X=y\\evil");
+    expect(featObj.status).toBe("ok\u000d\u000aFAKE\u0009ROW");
+  });
+
   it("leaves rows unaffected when no agent cwd matches a worktree", async () => {
     const repo = makeRepo();
     repos.push(repo);
