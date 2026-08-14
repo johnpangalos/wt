@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/johnpangalos/wt/compare/wt-v0.5.0...wt-v0.5.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* validate the update-check cache before printing its tag ([#52](https://github.com/johnpangalos/wt/issues/52)) ([f6d688f](https://github.com/johnpangalos/wt/commit/f6d688f3032fccd76e6de8a634722060e2d98cb2))
+
 ## [0.5.0](https://github.com/johnpangalos/wt/compare/wt-v0.4.0...wt-v0.5.0) (2026-08-14)
 
 
