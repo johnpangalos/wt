@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0](https://github.com/johnpangalos/wt/compare/wt-v0.4.0...wt-v0.5.0) (2026-08-14)
+
+
+### Features
+
+* cut skill token cost with looser matching and a split reference ([#48](https://github.com/johnpangalos/wt/issues/48)) ([4a5492a](https://github.com/johnpangalos/wt/commit/4a5492a4beb2a30044788f8016988f73b2ca8d30))
+* open a plain shell tab by default instead of $EDITOR ([#49](https://github.com/johnpangalos/wt/issues/49)) ([a8a5e96](https://github.com/johnpangalos/wt/commit/a8a5e964e4ea5b2f5a077a980e72746c0b29ee38))
+* ship /wt as an agent skill installable via npx skills ([#42](https://github.com/johnpangalos/wt/issues/42)) ([07e7fd8](https://github.com/johnpangalos/wt/commit/07e7fd8c4c5a1f63bbd07eaf1e06c233ec584249))
+
 ## [0.4.0](https://github.com/johnpangalos/wt/compare/wt-v0.3.3...wt-v0.4.0) (2026-07-02)
 
 
