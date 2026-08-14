@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
-import { listWorktrees, repoRoot } from "./git";
+import { basename, dirname, join } from "node:path";
+import { addWorktree, listWorktrees, repoRoot } from "./git";
 import { listAgents, matchAgents, type AgentSession } from "./agents";
 import type { Worktree } from "./types";
 import {
@@ -17,6 +18,9 @@ Usage:
   wt list [--json]          list worktrees (annotates Claude Code agent sessions)
   wt switch [branch|path]   open a worktree in a new Ghostty tab
                             (defaults to the worktree containing $PWD)
+                            matches on exact name, then prefix, then substring
+  wt switch -c <branch> [path]
+                            create the worktree if missing, then open it
   wt root                   open the main (root) worktree in a new Ghostty tab
   wt current                print the path of the worktree containing $PWD
   wt update                 check for a new release and install it
@@ -38,6 +42,8 @@ Environment:
   WT_CMD                command to spawn (default: $EDITOR or vi)
   WT_GHOSTTY_PLACEMENT  new-tab (default) | new-window |
                         split-right | split-left | split-down | split-up
+  WT_WORKTREE_DIR       parent dir for worktrees made by -c/--create
+                        (default: alongside the repo root)
   WT_NO_UPDATE_CHECK    set to any value to disable the background update check
 `;
 
@@ -209,24 +215,105 @@ function realpathOrSame(p: string): string {
   }
 }
 
+/**
+ * Match tiers for `wt switch <target>`, tried in order. The first tier that
+ * matches at all decides the outcome: exactly one hit switches, several are
+ * reported as ambiguous. Narrow-to-broad so an exact branch name always beats a
+ * substring hit on some other worktree.
+ */
+function matchTiers(entries: Worktree[], target: string): Worktree[][] {
+  const resolved = realpathOrSame(target);
+  const t = target.toLowerCase();
+  const branchOf = (w: Worktree) => displayBranch(w).toLowerCase();
+  return [
+    entries.filter(
+      (w) => w.branch === target || w.path === target || w.path === resolved,
+    ),
+    entries.filter((w) => branchOf(w) === t || basename(w.path).toLowerCase() === t),
+    entries.filter((w) => branchOf(w).startsWith(t)),
+    entries.filter((w) => branchOf(w).includes(t) || w.path.toLowerCase().includes(t)),
+  ];
+}
+
+/** Compact `branch<TAB>path` lines, for the stderr hint on a failed match. */
+function candidateLines(entries: Worktree[]): string {
+  return entries.map((w) => `  ${displayBranch(w)}\t${w.path}`).join("\n");
+}
+
+/**
+ * Resolve `target` to a single worktree, or exit with the candidate list on
+ * stderr. Printing candidates on failure is what lets callers (agents included)
+ * skip a speculative `wt list` — a wrong guess costs one command, not two.
+ */
+function resolveTarget(entries: Worktree[], target: string): Worktree {
+  for (const tier of matchTiers(entries, target)) {
+    if (tier.length === 1) return tier[0]!;
+    if (tier.length > 1) {
+      process.stderr.write(
+        `wt: '${target}' is ambiguous — matches ${tier.length} worktrees:\n${candidateLines(tier)}\n`,
+      );
+      process.exit(1);
+    }
+  }
+  process.stderr.write(
+    `wt: worktree '${target}' not found. Known worktrees:\n${candidateLines(entries)}\n`,
+  );
+  process.exit(1);
+}
+
+/**
+ * Where `--create` puts a new worktree: `$WT_WORKTREE_DIR` if set, else
+ * alongside the repo root as `<repo>-<branch>` (slashes flattened), which keeps
+ * it out of the repo and so out of `.gitignore`'s way.
+ */
+function newWorktreePath(root: string, branch: string, env: Env): string {
+  const dir = env.WT_WORKTREE_DIR || dirname(root);
+  const slug = branch.replace(/[/\\]/g, "-");
+  return join(dir, `${basename(root)}-${slug}`);
+}
+
 async function cmdSwitch(args: string[], env: Env): Promise<void> {
   const { placement, rest } = parsePlacement(args);
-  const target = rest[0];
+  let create = false;
+  const positional = rest.filter((a) => {
+    if (a === "--create" || a === "-c") {
+      create = true;
+      return false;
+    }
+    return true;
+  });
+  const target = positional[0];
   const entries = await getWorktrees(env);
+
   if (!target) {
+    if (create) die("--create requires a <branch>");
     // No target: re-open the worktree we're already in — `wt switch $(wt current)`.
     const here = currentWorktree(entries);
     if (!here) die("not inside a worktree (and no <branch|path> given)");
     await switchTo(here.path, env, placement);
     return;
   }
-  const resolved = realpathOrSame(target);
-  const match = entries.find(
-    (w) =>
-      w.branch === target || w.path === target || w.path === resolved,
-  );
-  if (!match) die(`worktree '${target}' not found`);
-  await switchTo(match.path, env, placement);
+
+  if (create) {
+    // Idempotent: an existing worktree for this branch is just switched to.
+    const existing = entries.find((w) => displayBranch(w) === target);
+    if (!existing) {
+      const root = entries[0]?.path ?? (await repoRoot(process.cwd()));
+      if (!root) die("not in a git repo");
+      const path = positional[1] ?? newWorktreePath(root, target, env);
+      try {
+        await addWorktree(root, target, path);
+      } catch (e) {
+        die((e as Error).message);
+      }
+      await switchTo(path, env, placement);
+      return;
+    }
+    await switchTo(existing.path, env, placement);
+    return;
+  }
+
+  await switchTo(resolveTarget(entries, target).path, env, placement);
 }
 
 async function cmdRoot(args: string[], env: Env): Promise<void> {

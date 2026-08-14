@@ -1,62 +1,28 @@
 ---
 name: wt
-description: Open a git worktree in a new Ghostty tab, window, or split running the user's editor via the `wt` CLI. Use after creating a worktree with `git worktree add`, when the user asks to open/switch to/jump to a worktree, or when they want to list their worktrees. macOS + Ghostty ≥ 1.3 only.
+description: Open a git worktree in a new Ghostty tab, window, or split running the user's editor via the `wt` CLI. Use when the user asks to open, switch to, or jump to a worktree, when you just created one, or when they want to list their worktrees. macOS + Ghostty ≥ 1.3 only.
 ---
 
 # wt — jump to a worktree
 
-Use the `wt` CLI to list or switch worktrees. It opens a new Ghostty tab (or
-window/split) running `$EDITOR` (or `$WT_CMD`) at the worktree's path. `wt` drives
-Ghostty through AppleScript, so it works even though you (the agent) run outside any
-terminal — Ghostty pops to the front on the user's Mac.
-
-## Commands
-
-- `wt list` — tab-separated path / branch / flags. Worktrees belonging to a Claude Code background agent gain an `agent` flag plus the session name and status.
-- `wt list --json` — same, as JSON (pipe to `jq` if you need to filter)
-- `wt switch [branch|path]` — open that worktree in a new Ghostty tab. With no argument it re-opens the worktree containing the current directory (the same as `wt switch $(wt current)`).
-- `wt root` — open the main (root) worktree in a new Ghostty tab
-- `wt current` — print the worktree containing the current directory
-
-## When to use
-
-- Just created a worktree with `git worktree add` → run `wt switch <branch>` so the user can edit it.
-- User asks "show me my worktrees" → `wt list`.
-- User asks to open a worktree they already have → `wt switch <name>`.
-
-## How it opens windows
-
-`wt switch` runs an AppleScript via `osascript` that tells Ghostty to open a new
-surface with the worktree as its working directory and `$EDITOR` as its command.
-There's no tmux/zellij session to target and no `$TMUX` to set — just call:
+`wt` opens a worktree in a new Ghostty tab running `$EDITOR`. It drives Ghostty
+through AppleScript, so it works even though you run outside any terminal —
+Ghostty pops to the front on the user's Mac.
 
 ```sh
-wt switch feat
+wt switch <branch>     # open that worktree
+wt switch -c <branch>  # same, creating the worktree first if it doesn't exist
+wt switch              # re-open the worktree containing $PWD
+wt root                # open the main (root) worktree
+wt list                # path / branch / flags, tab-separated (--json for JSON)
 ```
 
-By default this opens a new tab. Change the placement with a flag (which wins
-over the `WT_GHOSTTY_PLACEMENT` environment variable):
+`wt switch` matches on exact name, then prefix, then substring, so a partial
+branch name is enough — just run it. On a miss or an ambiguous prefix it exits
+non-zero and prints the candidates, so guessing wrong costs one command rather
+than a `wt list` up front. Reach for `wt list` only when the user actually asked
+to see their worktrees; agent-owned ones carry an `agent` flag plus session name
+and status.
 
-```sh
-wt switch feat --window        # new window instead of a tab
-wt switch feat --split-right   # split the front window to the right
-wt switch feat --tab           # explicit new tab (the default)
-wt switch --window             # re-open the current worktree in a new window
-```
-
-The flags are `--tab`, `--window`, `--split-right`, `--split-left`,
-`--split-down`, `--split-up`, `--split` (alias for `--split-right`), and
-`--placement <name>` / `-p <name>` for any of those names. The same flags work
-on `wt root`. The `WT_GHOSTTY_PLACEMENT` env var still sets the default:
-
-```sh
-WT_GHOSTTY_PLACEMENT=new-window  wt switch feat   # new window instead of a tab
-WT_GHOSTTY_PLACEMENT=split-right wt switch feat   # split the front window
-```
-
-## Constraints
-
-- macOS only — Ghostty's AppleScript support is macOS-specific, and requires Ghostty ≥ 1.3.
-- Does **not** create worktrees. Use `git worktree add` first, then `wt switch`.
-- `split-*` placements need an existing Ghostty window to split; `new-tab` (default) and `new-window` launch Ghostty if it isn't already running.
-- If `wt` isn't on `PATH`, tell the user to install it: `curl -fsSL https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh | sh`.
+For a new window or a split instead of a tab, the `WT_*` environment variables,
+and platform constraints, read [reference.md](reference.md).

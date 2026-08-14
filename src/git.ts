@@ -72,3 +72,30 @@ export async function repoRoot(cwd: string): Promise<string | null> {
   return stdout.trim() || null;
 }
 
+export async function branchExists(root: string, branch: string): Promise<boolean> {
+  const { code } = await runGit(root, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branch}`,
+  ]);
+  return code === 0;
+}
+
+/**
+ * `git worktree add` for `branch` at `path`, creating the branch when it does
+ * not already exist. Returns nothing; throws with git's stderr on failure.
+ */
+export async function addWorktree(
+  root: string,
+  branch: string,
+  path: string,
+): Promise<void> {
+  const exists = await branchExists(root, branch);
+  const args = exists
+    ? ["worktree", "add", path, branch]
+    : ["worktree", "add", "-b", branch, path];
+  const { code, stderr } = await runGit(root, args);
+  if (code !== 0) throw new Error(stderr.trim() || `git worktree add exited ${code}`);
+}
+
