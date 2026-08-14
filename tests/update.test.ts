@@ -1,129 +1,184 @@
-import { describe, it, expect } from "bun:test";
-import { chmodSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { describe, it, expect, afterEach } from "bun:test";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { fakeBin, readLog } from "./helpers";
+import { assetName, parseSha256Sums, installRelease } from "../src/update";
 
-const UPDATE_MODULE = resolve(import.meta.dir, "..", "src", "update.ts");
+const TAG = "wt-v9.9.9";
+const ASSET = "wt-darwin-arm64";
+const OLD = "old-binary-bytes\n";
+const NEW = "new-binary-bytes\n";
+
+function sha256(s: string): string {
+  const h = new Bun.CryptoHasher("sha256");
+  h.update(s);
+  return h.digest("hex");
+}
+
+type Fixture = {
+  /** Body served for the asset, or 404 when omitted. */
+  asset?: string;
+  /** Body served for SHA256SUMS, or 404 when omitted. */
+  sums?: string;
+};
+
+type Server = { baseUrl: string; stop: () => void };
 
 /**
- * Fake `curl` + `sh` on a scratch PATH. `curl` logs its argv so we can assert
- * the installer is downloaded to a file rather than piped into a shell; `sh`
- * logs its argv plus the env the installer actually receives.
+ * Serve release fixtures from localhost so no test touches the real network.
+ * Paths mirror GitHub's layout: `<base>/<tag>/<name>`.
  */
-function fakeInstallerBins(curlExit = 0): { dir: string; log: string } {
-  const fake = fakeBin([]);
-  const curl = `#!/bin/sh
-printf 'curl' >> "${fake.log}"
-for a in "$@"; do printf ' %s' "$a" >> "${fake.log}"; done
-printf '\\n' >> "${fake.log}"
-[ ${curlExit} -eq 0 ] && : > "$3"
-exit ${curlExit}
-`;
-  const sh = `#!/bin/sh
-printf 'sh' >> "${fake.log}"
-for a in "$@"; do printf ' %s' "$a" >> "${fake.log}"; done
-printf ' [WT_VERSION=%s PREFIX=%s]\\n' "\${WT_VERSION-}" "\${PREFIX-}" >> "${fake.log}"
-`;
-  for (const [name, body] of [
-    ["curl", curl],
-    ["sh", sh],
-  ] as const) {
-    const p = join(fake.dir, name);
-    writeFileSync(p, body);
-    chmodSync(p, 0o755);
+function serveRelease(fx: Fixture): Server {
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const name = new URL(req.url).pathname.split("/").pop() ?? "";
+      const body = name === ASSET ? fx.asset : name === "SHA256SUMS" ? fx.sums : undefined;
+      if (body === undefined) return new Response("not found", { status: 404 });
+      return new Response(body);
+    },
+  });
+  return {
+    baseUrl: `http://localhost:${server.port}`,
+    stop: () => server.stop(true),
+  };
+}
+
+/** A stand-in for the installed binary — never the real bin/wt. */
+function makeTarget(): string {
+  const dir = mkdtempSync(join(tmpdir(), "wt-target-"));
+  const target = join(dir, "wt");
+  writeFileSync(target, OLD);
+  chmodSync(target, 0o755);
+  return target;
+}
+
+function siblings(target: string): string[] {
+  return readdirSync(join(target, "..")).sort();
+}
+
+describe("update.assetName", () => {
+  it("resolves the published darwin/arm64 asset", () => {
+    expect(assetName("darwin", "arm64")).toBe(ASSET);
+  });
+
+  it("refuses platforms with no published build", () => {
+    expect(() => assetName("darwin", "x64")).toThrow(/not supported/);
+    expect(() => assetName("linux", "x64")).toThrow(/only runs on macOS/);
+    expect(() => assetName("win32", "x64")).toThrow(/unsupported platform/);
+  });
+});
+
+describe("update.parseSha256Sums", () => {
+  const digest = "a".repeat(64);
+  const other = "b".repeat(64);
+
+  it("picks the exact entry when names overlap", () => {
+    const text = [
+      `${other}  wt-darwin-arm64.sig`,
+      `${other}  xwt-darwin-arm64`,
+      `${other}  wt-darwin-arm`,
+      `${digest}  wt-darwin-arm64`,
+      `${other}  wt-linux-x64`,
+      "",
+    ].join("\n");
+    expect(parseSha256Sums(text, ASSET)).toBe(digest);
+  });
+
+  it("accepts binary-mode lines and normalizes case", () => {
+    const upper = "A".repeat(64);
+    expect(parseSha256Sums(`${upper} *${ASSET}\n`, ASSET)).toBe("a".repeat(64));
+  });
+
+  it("returns null when the asset is absent or the line is malformed", () => {
+    expect(parseSha256Sums(`${digest}  wt-linux-x64\n`, ASSET)).toBeNull();
+    expect(parseSha256Sums(`notahash  ${ASSET}\n`, ASSET)).toBeNull();
+    expect(parseSha256Sums("", ASSET)).toBeNull();
+  });
+});
+
+describe("update.installRelease", () => {
+  const servers: Server[] = [];
+  afterEach(() => {
+    while (servers.length) servers.pop()?.stop();
+  });
+
+  function serve(fx: Fixture): string {
+    const s = serveRelease(fx);
+    servers.push(s);
+    return s.baseUrl;
   }
-  return fake;
-}
 
-/**
- * Bun's shell resolves binaries against the PATH captured at process start, so
- * the fakes only take effect in a child process. Run `runInstaller` there and
- * report its return value back over stdout.
- */
-async function runInstallerWith(
-  fake: { dir: string },
-  tag: string,
-  prefix: string,
-): Promise<number> {
-  const src = `
-import { runInstaller } from ${JSON.stringify(UPDATE_MODULE)};
-const code = await runInstaller(${JSON.stringify(tag)}, ${JSON.stringify(prefix)});
-console.log("WT_INSTALLER_EXIT:" + code);
-`;
-  const proc = Bun.spawn([process.execPath, "-e", src], {
-    env: { PATH: `${fake.dir}:/usr/bin:/bin`, HOME: process.env.HOME ?? "" },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  await proc.exited;
-  const m = stdout.match(/WT_INSTALLER_EXIT:(-?\d+)/);
-  if (!m?.[1]) throw new Error(`runInstaller produced no result: ${stdout}`);
-  return Number(m[1]);
-}
+  function run(baseUrl: string, target: string): Promise<number> {
+    return installRelease(TAG, {
+      baseUrl,
+      target,
+      platform: "darwin",
+      arch: "arm64",
+    });
+  }
 
-function curlLines(log: string): string[] {
-  return log.split("\n").filter((l) => l.startsWith("curl "));
-}
+  it("replaces the target when the checksum matches", async () => {
+    const target = makeTarget();
+    const baseUrl = serve({ asset: NEW, sums: `${sha256(NEW)}  ${ASSET}\n` });
 
-function downloadTarget(curlLine: string): string {
-  return curlLine.split(" -o ")[1]?.split(" ")[0] ?? "";
-}
-
-describe("update.runInstaller", () => {
-  it("downloads the installer to a file and runs it without a shell pipe", async () => {
-    const fake = fakeInstallerBins();
-    const code = await runInstallerWith(fake, "wt-v9.9.9", "/tmp/wt-prefix");
-    expect(code).toBe(0);
-
-    const log = readLog(fake.log);
-    const curlLine = curlLines(log)[0] ?? "";
-    const shLine = log.split("\n").find((l) => l.startsWith("sh ")) ?? "";
-
-    // curl writes to a file (-o <path>); nothing is streamed into a shell.
-    expect(curlLine).toContain(" -o ");
-    expect(curlLine).not.toContain("|");
-    expect(curlLine).toContain(
-      "https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh",
-    );
-
-    // sh runs that exact downloaded file, not stdin.
-    const target = downloadTarget(curlLine);
-    expect(target).not.toBe("");
-    expect(shLine.split(" ")[1]).toBe(target);
+    expect(await run(baseUrl, target)).toBe(0);
+    expect(readFileSync(target, "utf8")).toBe(NEW);
+    // still executable after the atomic replace
+    expect(statSync(target).mode & 0o111).toBeGreaterThan(0);
+    // no staging file left behind next to it
+    expect(siblings(target)).toEqual(["wt"]);
   });
 
-  it("passes the confirmed tag through as WT_VERSION so latest is not re-resolved", async () => {
-    const fake = fakeInstallerBins();
-    await runInstallerWith(fake, "wt-v1.2.3", "/tmp/wt-prefix");
-    expect(readLog(fake.log)).toContain(
-      "[WT_VERSION=wt-v1.2.3 PREFIX=/tmp/wt-prefix]",
-    );
+  it("refuses on checksum mismatch and leaves the target untouched", async () => {
+    const target = makeTarget();
+    // SHA256SUMS advertises a different payload than the one served
+    const baseUrl = serve({ asset: NEW, sums: `${sha256("something-else")}  ${ASSET}\n` });
+
+    expect(await run(baseUrl, target)).toBe(1);
+    expect(readFileSync(target, "utf8")).toBe(OLD);
+    expect(siblings(target)).toEqual(["wt"]);
   });
 
-  it("uses a fresh private temp dir and removes it afterwards", async () => {
-    const fake = fakeInstallerBins();
-    await runInstallerWith(fake, "wt-v1.2.3", "/tmp/wt-prefix");
-    await runInstallerWith(fake, "wt-v1.2.3", "/tmp/wt-prefix");
+  it("refuses when the asset has no SHA256SUMS entry", async () => {
+    const target = makeTarget();
+    const baseUrl = serve({ asset: NEW, sums: `${sha256(NEW)}  wt-linux-x64\n` });
 
-    const targets = curlLines(readLog(fake.log)).map(downloadTarget);
-    expect(targets).toHaveLength(2);
-    // mkdtemp gives an unguessable, non-reused path per run
-    expect(targets[0]).not.toBe(targets[1]);
-    for (const t of targets) expect(await Bun.file(t).exists()).toBe(false);
+    expect(await run(baseUrl, target)).toBe(1);
+    expect(readFileSync(target, "utf8")).toBe(OLD);
+    expect(siblings(target)).toEqual(["wt"]);
   });
 
-  it("does not execute anything when the download fails", async () => {
-    const fake = fakeInstallerBins(22);
-    const code = await runInstallerWith(fake, "wt-v1.2.3", "/tmp/wt-prefix");
-    expect(code).not.toBe(0);
+  it("refuses when the binary download fails", async () => {
+    const target = makeTarget();
+    const baseUrl = serve({ sums: `${sha256(NEW)}  ${ASSET}\n` }); // asset 404s
 
-    const log = readLog(fake.log);
-    expect(curlLines(log)).toHaveLength(1);
-    expect(log.split("\n").filter((l) => l.startsWith("sh "))).toHaveLength(0);
+    expect(await run(baseUrl, target)).toBe(1);
+    expect(readFileSync(target, "utf8")).toBe(OLD);
+    expect(siblings(target)).toEqual(["wt"]);
+  });
+
+  it("refuses when SHA256SUMS download fails", async () => {
+    const target = makeTarget();
+    const baseUrl = serve({ asset: NEW }); // SHA256SUMS 404s
+
+    expect(await run(baseUrl, target)).toBe(1);
+    expect(readFileSync(target, "utf8")).toBe(OLD);
+    expect(siblings(target)).toEqual(["wt"]);
+  });
+
+  it("refuses on an unsupported platform without downloading anything", async () => {
+    const target = makeTarget();
+    const baseUrl = serve({ asset: NEW, sums: `${sha256(NEW)}  ${ASSET}\n` });
+
+    const code = await installRelease(TAG, {
+      baseUrl,
+      target,
+      platform: "linux",
+      arch: "x64",
+    });
+    expect(code).toBe(1);
+    expect(readFileSync(target, "utf8")).toBe(OLD);
   });
 });
