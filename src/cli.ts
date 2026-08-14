@@ -1,7 +1,12 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { addWorktree, listWorktrees, repoRoot } from "./git";
-import { listAgents, matchAgents, type AgentSession } from "./agents";
+import {
+  listAgents,
+  matchAgents,
+  stripControlChars,
+  type AgentSession,
+} from "./agents";
 import type { Worktree } from "./types";
 import {
   absolutizeCmd,
@@ -178,11 +183,22 @@ async function cmdList(args: string[], env: Env): Promise<void> {
     });
     process.stdout.write(JSON.stringify(obj) + "\n");
   } else {
+    // Plain text only: every value is control-stripped so it can't forge a row
+    // or break the tab-delimited columns. The --json branch above stays verbatim.
     for (const w of entries) {
       const agent = agentMap.get(w.path);
-      let line = `${w.path}\t${displayBranch(w)}\t${flags(w, agent)}`;
-      if (agent) line += `\t${agent.name ?? ""}\t${agentStatus(agent)}`;
-      process.stdout.write(line + "\n");
+      const cells = [
+        stripControlChars(w.path),
+        stripControlChars(displayBranch(w)),
+        flags(w, agent),
+      ];
+      if (agent) {
+        cells.push(
+          stripControlChars(agent.name ?? ""),
+          stripControlChars(agentStatus(agent)),
+        );
+      }
+      process.stdout.write(cells.join("\t") + "\n");
     }
   }
 }
