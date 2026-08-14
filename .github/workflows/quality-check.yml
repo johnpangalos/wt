@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+# Every job here only checks out code and runs tests/builds - none needs a
+# token or write access, so deny everything the default might have granted.
+# A job that ever does need more should opt in at the job level rather than
+# widening this.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -76,25 +83,3 @@ jobs:
           sed 's|^base=.*|base="http://localhost:8787"|' install.sh > /tmp/install-patched.sh
           WT_VERSION=test PREFIX=/tmp/wt-install sh /tmp/install-patched.sh
           /tmp/wt-install/bin/wt --help
-
-  release-please-config:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24'
-      - name: release-please dry-run
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          npx --yes release-please@latest release-pr \
-            --token="$GITHUB_TOKEN" \
-            --repo-url=johnpangalos/wt \
-            --config-file=release-please-config.json \
-            --manifest-file=.release-please-manifest.json \
-            --target-branch="$BRANCH" \
-            --dry-run --debug
