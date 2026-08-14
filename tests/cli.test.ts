@@ -389,7 +389,7 @@ describe("cli: switch", () => {
     expect(r.stderr).toMatch(/WT_GHOSTTY_PLACEMENT/);
   });
 
-  it("WT_CMD overrides default editor and resolves to an absolute path", async () => {
+  it("WT_CMD sets the surface command, resolved to an absolute path", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
@@ -421,7 +421,23 @@ describe("cli: switch", () => {
     );
   });
 
-  it("$EDITOR is used when WT_CMD is unset", async () => {
+  it("sets no command by default — just a shell in the new tab", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript", "hx", "vi"]);
+    const r = await runCli(BIN, ["switch", "feat"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    expect(log).toContain("new tab with configuration cfg");
+    expect(log).not.toContain("set command of cfg to");
+  });
+
+  it("ignores $EDITOR — only WT_CMD launches a command", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
@@ -432,25 +448,21 @@ describe("cli: switch", () => {
       env: { ...baseEnv(fake), EDITOR: "hx" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain(
-      `set command of cfg to "${fake.dir}/hx"`,
-    );
+    expect(readLog(fake.log)).not.toContain("set command of cfg to");
   });
 
-  it("falls back to vi when WT_CMD and $EDITOR are unset", async () => {
+  it("treats an empty WT_CMD as no command", async () => {
     const repo = makeRepo();
     repos.push(repo);
     const feat = addWorktree(repo, "feat");
     repos.push(feat);
-    const fake = fakeBin(["osascript", "vi"]);
+    const fake = fakeBin(["osascript"]);
     const r = await runCli(BIN, ["switch", "feat"], {
       cwd: repo,
-      env: baseEnv(fake),
+      env: { ...baseEnv(fake), WT_CMD: "" },
     });
     expect(r.exitCode).toBe(0);
-    expect(readLog(fake.log)).toContain(
-      `set command of cfg to "${fake.dir}/vi"`,
-    );
+    expect(readLog(fake.log)).not.toContain("set command of cfg to");
   });
 });
 

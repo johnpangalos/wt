@@ -35,7 +35,7 @@ that's set.
 
 | Variable | Effect |
 | --- | --- |
-| `WT_CMD` | command to spawn in the new surface (default: `$EDITOR`, else `vi`) |
+| `WT_CMD` | command to spawn in the new surface (default: none — the tab opens a plain shell) |
 | `WT_GHOSTTY_PLACEMENT` | default placement: `new-tab` (default), `new-window`, `split-right`, `split-left`, `split-down`, `split-up` |
 | `WT_WORKTREE_DIR` | parent directory for worktrees made by `-c` (default: beside the repo root) |
 | `WT_NO_UPDATE_CHECK` | set to anything to disable the background update check |

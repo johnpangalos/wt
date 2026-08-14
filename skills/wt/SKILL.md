@@ -1,11 +1,12 @@
 ---
 name: wt
-description: Open a git worktree in a new Ghostty tab, window, or split running the user's editor via the `wt` CLI. Use when the user asks to open, switch to, or jump to a worktree, when you just created one, or when they want to list their worktrees. macOS + Ghostty ≥ 1.3 only.
+description: Open a git worktree in a new Ghostty tab, window, or split via the `wt` CLI. Use when the user asks to open, switch to, or jump to a worktree, when you just created one, or when they want to list their worktrees. macOS + Ghostty ≥ 1.3 only.
 ---
 
 # wt — jump to a worktree
 
-`wt` opens a worktree in a new Ghostty tab running `$EDITOR`. It drives Ghostty
+`wt` opens a worktree in a new Ghostty tab — a shell at that path, or `$WT_CMD`
+if the user set one. It drives Ghostty
 through AppleScript, so it works even though you run outside any terminal —
 Ghostty pops to the front on the user's Mac.
 

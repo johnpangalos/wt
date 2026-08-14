@@ -19,7 +19,9 @@ function asString(s: string): string {
 }
 
 /**
- * Build the AppleScript that opens `args.cmd` at `args.path` in Ghostty.
+ * Build the AppleScript that opens a Ghostty surface at `args.path`, running
+ * `args.cmd` in it — or, when `args.cmd` is empty, leaving the surface to
+ * Ghostty's default shell.
  *
  * Uses Ghostty's AppleScript dictionary (1.3+): a `surface configuration`
  * carries the working directory and command, then `new window` / `new tab` /
