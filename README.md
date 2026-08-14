@@ -50,7 +50,9 @@ ln -s "$PWD/bin/wt" "$HOME/.local/bin/wt"            # put it on $PATH
 wt list                 # list worktrees (TSV)
 wt list --json          # list worktrees (JSON)
 wt switch feature-x     # open the feature-x worktree in a new Ghostty tab
+wt switch feat          # same — prefix/substring match on the branch name
 wt switch /path/to/wt   # same, by path
+wt switch -c new-thing  # create the worktree if missing, then open it
 wt switch               # re-open the worktree containing $PWD (= wt switch $(wt current))
 wt switch feat --window # open in a new window instead of a tab
 wt switch --split-right # split the front window with the current worktree
@@ -60,6 +62,40 @@ wt update               # check GitHub for a new release and install it
 wt --version            # print the installed version
 wt --help               # usage
 ```
+
+## Matching a worktree
+
+`wt switch <target>` tries progressively looser matches and stops at the first
+tier that hits: exact branch or path, then exact directory basename
+(case-insensitive), then branch prefix, then branch or path substring. So
+`wt switch tok` finds `claude/skill-token-opt`, while an exact branch name always
+beats a substring hit on some longer one.
+
+If a tier matches more than one worktree, `wt` refuses to guess — it exits
+non-zero and prints the candidates:
+
+```
+$ wt switch feat
+wt: 'feat' is ambiguous — matches 2 worktrees:
+  feat-alpha	/repo-feat-alpha
+  feat-beta	/repo-feat-beta
+```
+
+A target that matches nothing prints the full worktree list the same way. Both
+mean a wrong guess costs one command instead of a `wt list` up front — which is
+what lets the agent skill skip listing entirely.
+
+## Creating worktrees
+
+`wt switch -c <branch> [path]` (`--create`) creates the worktree first when it
+doesn't exist yet, then opens it. It's idempotent: if a worktree for that branch
+is already checked out, it just opens that one. An existing local branch is
+checked out as-is; otherwise the branch is created with `git worktree add -b`.
+
+Without an explicit `path`, the new worktree lands next to the repo root as
+`<repo>-<branch>`, with `/` flattened to `-` — so `-c claude/fix-thing` in
+`~/src/wt` creates `~/src/wt-claude-fix-thing`. Set `WT_WORKTREE_DIR` to put new
+worktrees somewhere else.
 
 ## Agent-aware listing
 
@@ -95,6 +131,7 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 |---|---|---|
 | `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. Its executable is resolved to an absolute path before being handed to Ghostty (see below). |
 | `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
+| `WT_WORKTREE_DIR` | beside the repo root | Parent directory for worktrees created by `wt switch -c`. |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
 
 `wt switch` and `wt root` also take a placement flag that overrides
@@ -151,8 +188,11 @@ to find or cache. If Ghostty isn't open, `activate` launches it.
 ## Agent skill (Claude Code & friends)
 
 `wt` ships an [agent skill](skills/wt/SKILL.md) that teaches coding agents when
-and how to use the CLI (e.g. after `git worktree add`, run `wt switch <branch>`
-so a Ghostty tab pops open for you). Install it with Vercel's
+and how to use the CLI (e.g. run `wt switch -c <branch>` so a Ghostty tab pops
+open for you). It's deliberately small — the everyday commands live in
+`SKILL.md` (~280 tokens), while placement flags, env vars, output formats, and
+platform constraints sit in [`reference.md`](skills/wt/reference.md), which an
+agent only reads when it needs them. Install it with Vercel's
 [`skills` CLI](https://github.com/vercel-labs/skills):
 
 ```sh
@@ -177,8 +217,7 @@ cp -R skills/wt ~/.claude/skills/wt
 In Claude Code the skill is also user-invocable as `/wt`. Typical flow:
 
 ```
-$ git worktree add ../repo-feat -b feat
-$ wt switch feat
+$ wt switch -c feat
 ```
 
 A new Ghostty tab pops open (Ghostty comes to the front) with your editor at
@@ -189,7 +228,7 @@ the worktree's path.
 ```sh
 bun install
 bun run build          # produces bin/wt
-bun test               # build + run all tests (48 tests)
+bun test               # build + run all tests
 bun run test:fast      # run tests against the last-built binary
 bun run typecheck      # tsc --noEmit
 ```

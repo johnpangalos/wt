@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterEach } from "bun:test";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 
 import { makeRepo, addWorktree, fakeBin, fakeClaudeBin, fakeGhBin, readLog, runCli, cleanRepo } from "./helpers";
 import pkg from "../package.json";
@@ -328,6 +329,22 @@ describe("cli: switch", () => {
     expect(r.stderr + r.stdout).toMatch(/nope-missing|not found/);
   });
 
+  it("switch <nonexistent> lists the known worktrees on stderr", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "nope-missing"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toContain("feat");
+    expect(r.stderr).toContain(feat);
+    expect(r.stderr).toContain("main");
+  });
+
   it("WT_GHOSTTY_PLACEMENT=new-window opens a window", async () => {
     const repo = makeRepo();
     repos.push(repo);
@@ -434,6 +451,241 @@ describe("cli: switch", () => {
     expect(readLog(fake.log)).toContain(
       `set command of cfg to "${fake.dir}/vi"`,
     );
+  });
+});
+
+describe("cli: switch matching", () => {
+  const repos: string[] = [];
+  afterEach(() => {
+    while (repos.length) {
+      const r = repos.pop();
+      if (r) cleanRepo(r);
+    }
+  });
+
+  it("matches a branch by prefix", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feature-login");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feature-l"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain(
+      `set initial working directory of cfg to "${feat}"`,
+    );
+  });
+
+  it("matches a branch by substring", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(
+      repo,
+      "claude/skill-token-opt",
+      join(mkdtempSync(join(tmpdir(), "wt-slashy-")), "wt"),
+    );
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "token"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain(
+      `set initial working directory of cfg to "${feat}"`,
+    );
+  });
+
+  it("matches a branch case-insensitively", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "Feature-X");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feature-x"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain(
+      `set initial working directory of cfg to "${feat}"`,
+    );
+  });
+
+  it("prefers an exact branch name over a substring hit on another worktree", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const exact = addWorktree(repo, "api");
+    repos.push(exact);
+    const longer = addWorktree(repo, "rewrite-api-client");
+    repos.push(longer);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "api"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    const log = readLog(fake.log);
+    expect(log).toContain(`set initial working directory of cfg to "${exact}"`);
+    expect(log).not.toContain(longer);
+  });
+
+  it("reports ambiguity with the candidates instead of guessing", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const a = addWorktree(repo, "feat-alpha");
+    repos.push(a);
+    const b = addWorktree(repo, "feat-beta");
+    repos.push(b);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "feat"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toContain("ambiguous");
+    expect(r.stderr).toContain("feat-alpha");
+    expect(r.stderr).toContain("feat-beta");
+    // nothing was opened
+    expect(readLog(fake.log)).toBe("");
+  });
+
+  it("still resolves an exact path", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", feat], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain(feat);
+  });
+});
+
+describe("cli: switch --create", () => {
+  const repos: string[] = [];
+  afterEach(() => {
+    while (repos.length) {
+      const r = repos.pop();
+      if (r) cleanRepo(r);
+    }
+  });
+
+  it("creates a missing worktree and opens it", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "--create", "brand-new"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_WORKTREE_DIR: dest },
+    });
+    expect(r.exitCode).toBe(0);
+    const created = join(dest, `${basename(repo)}-brand-new`);
+    expect(existsSync(created)).toBe(true);
+    expect(readLog(fake.log)).toContain(
+      `set initial working directory of cfg to "${created}"`,
+    );
+  });
+
+  it("flattens slashes in the branch name into the directory name", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "-c", "claude/fix-thing"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_WORKTREE_DIR: dest },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(join(dest, `${basename(repo)}-claude-fix-thing`))).toBe(true);
+  });
+
+  it("is idempotent — an existing worktree is just opened", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const feat = addWorktree(repo, "feat");
+    repos.push(feat);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "--create", "feat"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_WORKTREE_DIR: dest },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain(
+      `set initial working directory of cfg to "${feat}"`,
+    );
+    // no second directory was made for the branch
+    expect(existsSync(join(dest, `${basename(repo)}-feat`))).toBe(false);
+  });
+
+  it("checks out an existing branch rather than failing on -b", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    spawnSync("git", ["-C", repo, "branch", "already-there"]);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "-c", "already-there"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_WORKTREE_DIR: dest },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(join(dest, `${basename(repo)}-already-there`))).toBe(true);
+  });
+
+  it("honours an explicit destination path", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const explicit = join(dest, "somewhere-else");
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "-c", "custom-path", explicit], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(explicit)).toBe(true);
+    expect(readLog(fake.log)).toContain(
+      `set initial working directory of cfg to "${explicit}"`,
+    );
+  });
+
+  it("--create with a placement flag still honours the placement", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "-c", "windowed", "--window"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_WORKTREE_DIR: dest },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readLog(fake.log)).toContain("new window with configuration cfg");
+  });
+
+  it("--create with no branch exits non-zero", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "--create"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toContain("--create");
   });
 });
 
