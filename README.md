@@ -1,6 +1,6 @@
 # wt
 
-Pick and switch git worktrees from the shell. `wt switch <branch>` opens the worktree in a new [Ghostty](https://ghostty.org) tab running your `$EDITOR` — fresh cwd, fresh LSP, nothing leaking between branches.
+Pick and switch git worktrees from the shell. `wt switch <branch>` opens the worktree in a new [Ghostty](https://ghostty.org) tab — a plain shell at the right path, fresh cwd, nothing leaking between branches. Set `WT_CMD` if you'd rather the tab launch straight into your editor.
 
 It drives Ghostty through its AppleScript dictionary, so `wt` can talk to a running Ghostty from anywhere — even when launched outside any terminal (Claude Code's Bash tool, a launchd job, a script). No session juggling: `wt switch` just opens a tab and Ghostty pops to the front.
 
@@ -129,7 +129,7 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WT_CMD` | `$EDITOR` or `vi` | Command to run in the new surface. Its executable is resolved to an absolute path before being handed to Ghostty (see below). |
+| `WT_CMD` | — | Command to run in the new surface. Unset (the default) opens a plain shell; set it to e.g. `nvim` to launch straight into your editor. Its executable is resolved to an absolute path before being handed to Ghostty (see below). |
 | `WT_GHOSTTY_PLACEMENT` | `new-tab` | `new-tab` \| `new-window` \| `split-right` \| `split-left` \| `split-down` \| `split-up` |
 | `WT_WORKTREE_DIR` | beside the repo root | Parent directory for worktrees created by `wt switch -c`. |
 | `WT_NO_UPDATE_CHECK` | — | set to any value to disable the daily background update check. |
@@ -140,12 +140,12 @@ The cache lives at `$XDG_STATE_HOME/wt/update-check` (default `~/.local/state/wt
 for `--split-right`), or `--placement <name>` / `-p <name>` for any of those
 names.
 
-> **`exec nvim: not found`?** Ghostty runs the surface command through a
+> **`exec nvim: not found`?** (Only reachable with `WT_CMD` set.) Ghostty runs the surface command through a
 > non-login shell, and because it's launched via AppleScript `activate` it
 > inherits the macOS GUI launch `PATH` (`/usr/bin:/bin:…`), not your interactive
 > shell `PATH`. A bare `nvim` installed under `/opt/homebrew/bin` would then fail
 > to launch. `wt` runs from your shell with the full `PATH`, so it resolves the
-> `WT_CMD`/`$EDITOR` executable to an absolute path before handing it to Ghostty.
+> `WT_CMD` executable to an absolute path before handing it to Ghostty.
 > A command that already contains a `/`, or whose executable isn't on your
 > `PATH`, is passed through unchanged.
 
@@ -175,10 +175,12 @@ tell application "Ghostty"
   activate
   set cfg to new surface configuration
   set initial working directory of cfg to "/path/to/worktree"
-  set command of cfg to "nvim"
   new tab with configuration cfg
 end tell
 ```
+
+With `WT_CMD` set, a `set command of cfg to "/opt/homebrew/bin/nvim"` line joins
+the configuration; without it the surface is left to Ghostty's default shell.
 
 Because AppleScript addresses the running Ghostty app directly, this works the
 same whether `wt` runs inside a Ghostty terminal or from somewhere with no TTY

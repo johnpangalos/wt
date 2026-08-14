@@ -39,7 +39,7 @@ Placement flags (for switch / root, override WT_GHOSTTY_PLACEMENT):
                         any of the names above (new-tab, new-window, split-*)
 
 Environment:
-  WT_CMD                command to spawn (default: $EDITOR or vi)
+  WT_CMD                command to spawn (default: none — just a shell)
   WT_GHOSTTY_PLACEMENT  new-tab (default) | new-window |
                         split-right | split-left | split-down | split-up
   WT_WORKTREE_DIR       parent dir for worktrees made by -c/--create
@@ -78,8 +78,16 @@ function agentStatus(agent: AgentSession): string {
   return status;
 }
 
+/**
+ * The command to run in the new surface, or `""` for none.
+ *
+ * Empty by default: the tab opens on your shell at the worktree path, same as
+ * hitting cmd-T there. Set `WT_CMD` (e.g. to `$EDITOR`) to launch something
+ * instead — `wt` resolves it to an absolute path for Ghostty's benefit.
+ */
 function resolveCmd(env: Env): string {
-  const cmd = env.WT_CMD || env.EDITOR || "vi";
+  const cmd = env.WT_CMD;
+  if (!cmd) return "";
   return absolutizeCmd(cmd, (bin) => Bun.which(bin, { PATH: env.PATH }));
 }
 
