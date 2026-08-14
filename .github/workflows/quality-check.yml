@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# Least privilege by default: every job here only checks out code and runs
+# tests/builds. Jobs that need more must opt in explicitly (see
+# release-please-config below).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -79,6 +85,13 @@ jobs:
 
   release-please-config:
     runs-on: ubuntu-latest
+    # The only job needing more than the workflow default: the dry-run reads
+    # commits and tags (contents) and scans existing/merged release PRs to work
+    # out the last release (pull-requests). Read-only on both - a --dry-run
+    # must never actually open a PR, so no write scope is granted here.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -91,7 +104,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          npx --yes release-please@latest release-pr \
+          # The version below is pinned deliberately - do NOT change it to
+          # @latest. This npx call executes release-please and its whole
+          # transitive dependency tree with GITHUB_TOKEN in scope, so an
+          # unpinned range would run whatever was published minutes earlier.
+          # 17.6.0 is also the exact version bundled by the
+          # googleapis/release-please-action@v5 pin in release-please.yml, so
+          # this dry-run previews the tooling that actually cuts the release.
+          # Bump both together.
+          npx --yes release-please@17.6.0 release-pr \
             --token="$GITHUB_TOKEN" \
             --repo-url=johnpangalos/wt \
             --config-file=release-please-config.json \
