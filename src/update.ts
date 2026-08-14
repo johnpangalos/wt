@@ -1,4 +1,12 @@
-import { readFileSync, writeFileSync, mkdirSync, openSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ReadStream, WriteStream } from "node:tty";
 import { createInterface } from "node:readline/promises";
@@ -141,6 +149,44 @@ async function promptYes(): Promise<boolean> {
   }
 }
 
+/**
+ * Download `install.sh` to a private temp file, then run it with `sh <file>`.
+ *
+ * Deliberately not `curl … | sh`: a pipe hands bytes to the shell as they
+ * arrive, so a connection dropped mid-transfer executes a truncated script.
+ * Downloading first means curl's non-zero exit on a short/failed transfer
+ * stops us before anything runs. The temp dir comes from `mkdtempSync` (mode
+ * 0700, unguessable name) so a predictable `/tmp` path can't be pre-created as
+ * a symlink pointing somewhere else.
+ *
+ * `tag` is forwarded as `WT_VERSION` so the installer installs exactly the
+ * release the user confirmed at the prompt, instead of independently
+ * re-resolving `releases/latest` (which may have moved since).
+ */
+export async function runInstaller(tag: string, prefix: string): Promise<number> {
+  const dir = mkdtempSync(join(tmpdir(), "wt-install-"));
+  const script = join(dir, "install.sh");
+  try {
+    const dl = await $`curl -fsSL -o ${script} ${INSTALL_URL}`.nothrow();
+    if (dl.exitCode !== 0) {
+      process.stderr.write(
+        `wt: failed to download installer (${INSTALL_URL}): curl exited ${dl.exitCode}\n`,
+      );
+      return 1;
+    }
+    const result = await $`sh ${script}`
+      .env({
+        ...(process.env as Record<string, string>),
+        PREFIX: prefix,
+        WT_VERSION: tag,
+      })
+      .nothrow();
+    return result.exitCode;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 export async function cmdUpdate(env: UpdateEnv): Promise<number> {
   let tag: string;
   try {
@@ -173,10 +219,7 @@ export async function cmdUpdate(env: UpdateEnv): Promise<number> {
 
   const binDir = dirname(process.execPath);
   const prefix = dirname(binDir);
-  const result = await $`curl -fsSL ${INSTALL_URL} | sh`
-    .env({ ...(process.env as Record<string, string>), PREFIX: prefix })
-    .nothrow();
-  const code = result.exitCode;
+  const code = await runInstaller(tag, prefix);
   if (code === 0) {
     const p = cachePath(env);
     if (p) {
