@@ -5,9 +5,10 @@ on:
   push:
     branches: [main]
 
-# Least privilege by default: every job here only checks out code and runs
-# tests/builds. Jobs that need more must opt in explicitly (see
-# release-please-config below).
+# Every job here only checks out code and runs tests/builds - none needs a
+# token or write access, so deny everything the default might have granted.
+# A job that ever does need more should opt in at the job level rather than
+# widening this.
 permissions:
   contents: read
 
@@ -82,48 +83,3 @@ jobs:
           sed 's|^base=.*|base="http://localhost:8787"|' install.sh > /tmp/install-patched.sh
           WT_VERSION=test PREFIX=/tmp/wt-install sh /tmp/install-patched.sh
           /tmp/wt-install/bin/wt --help
-
-  release-please-config:
-    runs-on: ubuntu-latest
-    # The only job needing more than the workflow default: the dry-run reads
-    # commits and tags (contents) and scans existing/merged release PRs to work
-    # out the last release (pull-requests). Read-only on both - a --dry-run
-    # must never actually open a PR, so no write scope is granted here.
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - name: release-please dry-run
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          # release-please is an exact-pinned devDependency (17.6.0, no range),
-          # so the `bun install --frozen-lockfile` above verifies it and its
-          # whole transitive tree against bun.lock integrity hashes before
-          # anything executes with GITHUB_TOKEN in scope. Renovate tracks it
-          # from package.json. Do NOT reintroduce npx/bunx here: those resolve
-          # and fetch at run time, which is exactly the check being avoided.
-          #
-          # 17.6.0 is also the version bundled by the
-          # googleapis/release-please-action@v5 pin in release-please.yml, so
-          # this dry-run previews the tooling that actually cuts the release.
-          #
-          # Invoked through `bun` explicitly rather than via
-          # ./node_modules/.bin/release-please, whose `#!/usr/bin/env node`
-          # shebang would silently run it under whatever Node the runner image
-          # happens to ship - an unpinned runtime this job otherwise avoids.
-          bun ./node_modules/release-please/build/src/bin/release-please.js release-pr \
-            --token="$GITHUB_TOKEN" \
-            --repo-url=johnpangalos/wt \
-            --config-file=release-please-config.json \
-            --manifest-file=.release-please-manifest.json \
-            --target-branch="$BRANCH" \
-            --dry-run --debug
