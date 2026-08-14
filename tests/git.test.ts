@@ -3,7 +3,12 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { listWorktrees, repoRoot, parsePorcelain } from "../src/git";
+import {
+  listWorktrees,
+  repoRoot,
+  parsePorcelain,
+  addWorktree as gitAddWorktree,
+} from "../src/git";
 import { makeRepo, addWorktree, cleanRepo } from "./helpers";
 
 describe("git.parsePorcelain", () => {
@@ -86,6 +91,47 @@ describe("git.listWorktrees", () => {
   it("throws a helpful error outside a git repo", async () => {
     const tmp = "/tmp";
     await expect(listWorktrees(tmp)).rejects.toThrow(/not in a git repo|not a git/i);
+  });
+});
+
+describe("git.addWorktree", () => {
+  const repos: string[] = [];
+  afterEach(() => {
+    while (repos.length) {
+      const r = repos.pop();
+      if (r) cleanRepo(r);
+    }
+  });
+
+  // Both cases would die on "unknown switch" without the `--` separator, since
+  // git reads the leading dash as the start of an option.
+  it("passes a dash-leading path through for a new branch", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    await gitAddWorktree(repo, "dashy-new", "-dashy-new");
+    const entries = await listWorktrees(repo);
+    expect(entries.map((e) => e.branch)).toContain("dashy-new");
+    expect(entries.some((e) => e.path === join(repo, "-dashy-new"))).toBe(true);
+  });
+
+  it("passes a dash-leading path through for an existing branch", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    spawnSync("git", ["-C", repo, "branch", "already-there"]);
+    await gitAddWorktree(repo, "already-there", "-dashy-existing");
+    const entries = await listWorktrees(repo);
+    const added = entries.find((e) => e.path === join(repo, "-dashy-existing"));
+    expect(added?.branch).toBe("already-there");
+    expect(added?.detached).toBe(false);
+  });
+
+  it("throws rather than letting a dash-leading branch act as a git flag", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const dest = join(repo, "detached-please");
+    await expect(gitAddWorktree(repo, "--detach", dest)).rejects.toThrow();
+    const entries = await listWorktrees(repo);
+    expect(entries).toHaveLength(1);
   });
 });
 

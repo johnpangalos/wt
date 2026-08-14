@@ -688,6 +688,40 @@ describe("cli: switch --create", () => {
     expect(readLog(fake.log)).toContain("new window with configuration cfg");
   });
 
+  it("refuses an option-like branch instead of handing it to git", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const dest = mkdtempSync(join(tmpdir(), "wt-dest-"));
+    repos.push(dest);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "-c", "--detach"], {
+      cwd: repo,
+      env: { ...baseEnv(fake), WT_WORKTREE_DIR: dest },
+    });
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toContain("wt: '--detach'");
+    expect(r.stderr).toContain("./--detach");
+    // git never ran: no worktree was added and no tab was opened
+    expect(existsSync(join(dest, `${basename(repo)}---detach`))).toBe(false);
+    expect(readLog(fake.log)).toBe("");
+    const list = spawnSync("git", ["-C", repo, "worktree", "list"]);
+    expect(list.stdout.toString().trim().split("\n")).toHaveLength(1);
+  });
+
+  it("refuses an option-like destination path", async () => {
+    const repo = makeRepo();
+    repos.push(repo);
+    const fake = fakeBin(["osascript"]);
+    const r = await runCli(BIN, ["switch", "-c", "some-branch", "-weird"], {
+      cwd: repo,
+      env: baseEnv(fake),
+    });
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toContain("wt: '-weird'");
+    const list = spawnSync("git", ["-C", repo, "worktree", "list"]);
+    expect(list.stdout.toString().trim().split("\n")).toHaveLength(1);
+  });
+
   it("--create with no branch exits non-zero", async () => {
     const repo = makeRepo();
     repos.push(repo);
