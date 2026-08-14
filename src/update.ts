@@ -26,6 +26,35 @@ function cachePath(env: UpdateEnv): string | null {
 
 type CacheEntry = { ts: number; tag: string };
 
+/** Longest tag we'll believe. Real tags are like "wt-v0.5.0" — 64 is generous. */
+const MAX_TAG_LEN = 64;
+
+/**
+ * Characters a release tag may contain. Covers every shape `stripV` knows
+ * ("wt-v0.5.0", "v0.5.0", "0.5.0") while excluding control bytes, escape
+ * sequences, and whitespace.
+ */
+const TAG_RE = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Read the update-check cache, treating its contents as untrusted input.
+ *
+ * The cache lives under `$XDG_STATE_HOME` (or `$HOME`), and `maybeNag` prints
+ * the tag it holds straight to the terminal on every `wt` invocation. If that
+ * directory is ever group- or world-writable, whoever can write the file gets
+ * to choose bytes our stderr emits — an escape-sequence injection, and an
+ * unbounded-length one. It's a narrow, local scenario that needs an unusual
+ * `XDG_STATE_HOME`, but validating a short version string costs nothing, so we
+ * do it rather than trust the file.
+ *
+ * Anything that fails validation — bad shape, a tag with control characters, an
+ * over-long tag, a negative or far-future timestamp — is reported as `null`,
+ * same as a missing file. `maybeNag` reads `null` as "no usable cache" and
+ * spawns a background refresh, so a corrupt or poisoned entry is overwritten on
+ * the next run instead of sticking around. A far-future `ts` is worth rejecting
+ * for its own sake: left alone it keeps `now - ts < DAY_MS` true forever and
+ * would freeze the update check permanently.
+ */
 function readCache(p: string): CacheEntry | null {
   try {
     const raw = readFileSync(p, "utf8").trim();
@@ -33,7 +62,8 @@ function readCache(p: string): CacheEntry | null {
     if (idx < 0) return null;
     const ts = Number(raw.slice(0, idx));
     const tag = raw.slice(idx + 1).trim();
-    if (!Number.isFinite(ts) || !tag) return null;
+    if (!Number.isInteger(ts) || ts < 0 || ts > Date.now() + DAY_MS) return null;
+    if (!tag || tag.length > MAX_TAG_LEN || !TAG_RE.test(tag)) return null;
     return { ts, tag };
   } catch {
     return null;
