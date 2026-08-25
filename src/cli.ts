@@ -290,6 +290,18 @@ async function cmdSwitch(args: string[], env: Env): Promise<void> {
     }
     return true;
   });
+  // `parsePlacement` forwards anything it doesn't recognise, so an unknown or
+  // mistyped flag arrives here as a positional. Refuse it rather than pass it
+  // down: git ref names can't start with `-` anyway, so nothing legitimate is
+  // lost, and the user gets our error instead of git's usage dump.
+  const flaglike = positional.find((a) => a.startsWith("-"));
+  if (flaglike) {
+    die(
+      `'${flaglike}' looks like a flag, not a branch or path (see wt --help). ` +
+        `Branch names cannot start with '-'; for a path that does, write it as './${flaglike}'.`,
+    );
+  }
+
   const target = positional[0];
   const entries = await getWorktrees(env);
 
