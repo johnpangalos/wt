@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1](https://github.com/johnpangalos/wt/compare/wt-v0.5.0...wt-v0.5.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* validate the update-check cache before printing its tag ([#52](https://github.com/johnpangalos/wt/issues/52)) ([f6d688f](https://github.com/johnpangalos/wt/commit/f6d688f3032fccd76e6de8a634722060e2d98cb2))
+
+
+### Performance Improvements
+
+* **skill:** run wt during skill render instead of a model-driven Bash call ([#57](https://github.com/johnpangalos/wt/issues/57)) ([d67d81a](https://github.com/johnpangalos/wt/commit/d67d81ac2d2ba27e8fea069c4e301c714229e4a5))
+
 ## [0.5.0](https://github.com/johnpangalos/wt/compare/wt-v0.4.0...wt-v0.5.0) (2026-08-14)
 
 
