@@ -148,7 +148,17 @@ export function maybeNag(env: UpdateEnv): void {
   }
 }
 
-async function promptYes(): Promise<boolean> {
+/**
+ * Three outcomes, not two. `wt update` runs plenty of places that have no
+ * controlling terminal — a Claude Code Bash call, a CI step, anything behind a
+ * pipe — and there `open("/dev/tty")` fails with ENXIO. Folding that into a
+ * plain `false` made an unanswerable prompt look exactly like a declined one:
+ * the version line, then "aborted.", exit 0, and no hint of which happened.
+ * Callers need the distinction so they can point at `--yes` instead.
+ */
+type Confirmation = "yes" | "no" | "no-tty";
+
+async function promptYes(): Promise<Confirmation> {
   let input: ReadStream | null = null;
   let output: WriteStream | null = null;
   try {
@@ -157,13 +167,13 @@ async function promptYes(): Promise<boolean> {
   } catch {
     input?.destroy();
     output?.destroy();
-    return false;
+    return "no-tty";
   }
   const rl = createInterface({ input, output });
   try {
     const answer = await rl.question("install? [y/N] ");
     const trimmed = answer.trim().toLowerCase();
-    return trimmed === "y" || trimmed === "yes";
+    return trimmed === "y" || trimmed === "yes" ? "yes" : "no";
   } finally {
     rl.close();
     input.destroy();
@@ -171,7 +181,22 @@ async function promptYes(): Promise<boolean> {
   }
 }
 
-export async function cmdUpdate(env: UpdateEnv): Promise<number> {
+export async function cmdUpdate(
+  env: UpdateEnv,
+  args: string[] = [],
+): Promise<number> {
+  let assumeYes = false;
+  for (const arg of args) {
+    if (arg === "-y" || arg === "--yes") {
+      assumeYes = true;
+      continue;
+    }
+    process.stderr.write(
+      `wt: unknown flag for update: ${arg} (try: wt --help)\n`,
+    );
+    return 1;
+  }
+
   let tag: string;
   try {
     tag = await fetchLatestTag();
@@ -196,9 +221,18 @@ export async function cmdUpdate(env: UpdateEnv): Promise<number> {
     return 0;
   }
   process.stdout.write(`wt v${VERSION} → v${latest}\n`);
-  if (!(await promptYes())) {
-    process.stdout.write("aborted.\n");
-    return 0;
+  if (!assumeYes) {
+    const answer = await promptYes();
+    if (answer === "no-tty") {
+      process.stderr.write(
+        "wt: no terminal to confirm on — re-run with: wt update --yes\n",
+      );
+      return 1;
+    }
+    if (answer === "no") {
+      process.stdout.write("aborted.\n");
+      return 0;
+    }
   }
 
   const binDir = dirname(process.execPath);

@@ -23,7 +23,9 @@ Usage:
                             create the worktree if missing, then open it
   wt root                   open the main (root) worktree in a new Ghostty tab
   wt current                print the path of the worktree containing $PWD
-  wt update                 check for a new release and install it
+  wt update [-y|--yes]      check for a new release and install it
+                            (--yes skips the confirm prompt; required
+                            when there is no terminal to ask on)
   wt --version              print the installed wt version
   wt --help                 show this help
 
@@ -379,7 +381,7 @@ async function main(): Promise<void> {
     case "current":
       return cmdCurrent(argv.slice(1), env);
     case "update": {
-      const code = await cmdUpdate(env);
+      const code = await cmdUpdate(env, argv.slice(1));
       process.exit(code);
     }
     default:
