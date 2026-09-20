@@ -115,7 +115,7 @@ agents are running, output is unchanged.
 
 ## Updating
 
-`wt update` uses the [GitHub CLI](https://cli.github.com) (`gh api`) to check for a newer release, so it relies on your existing `gh` authentication and isn't subject to the unauthenticated API rate limit (which surfaces as a `403`). `gh` must be installed and authenticated (`gh auth login`). If a newer version exists, it prints `wt vCURRENT → vLATEST` and prompts for confirmation before re-running `install.sh` with the same `PREFIX` the current binary was installed under.
+`wt update` uses the [GitHub CLI](https://cli.github.com) (`gh api`) to check for a newer release, so it relies on your existing `gh` authentication and isn't subject to the unauthenticated API rate limit (which surfaces as a `403`). `gh` must be installed and authenticated (`gh auth login`). If a newer version exists, it prints `wt vCURRENT → vLATEST` and prompts for confirmation (pass `-y`/`--yes` to skip the prompt). On confirmation it downloads the release binary itself, checks its SHA256 against the release's `SHA256SUMS`, and only then replaces the running executable with an atomic rename. A mismatch, a missing checksum entry, or a failed download leaves the installed binary untouched. Note what the checksum does and does not prove: it shows the bytes arrived intact from the release, not that the release is authentic — whoever can publish a release can publish a matching `SHA256SUMS`. `install.sh` is still how you bootstrap a machine that has no `wt` yet; `wt update` no longer runs it.
 
 To reduce friction, `wt` also runs a throttled background check (once per day) on every invocation and prints a single-line hint to stderr when a newer release is available:
 

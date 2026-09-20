@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from "bun:test";
 import { basename, join, resolve } from "node:path";
-import { existsSync, mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
@@ -950,19 +950,19 @@ describe("cli: version and update", () => {
     expect(r.exitCode).toBe(1);
   });
 
-  it("update --yes installs without a prompt and records the new tag", async () => {
+  it("update --yes proceeds without asking and without a terminal", async () => {
     const fake = fakeBin([]);
     fakeGhBin(fake.dir, "wt-v99.0.0");
-    // The installer is `curl -fsSL <url> | sh`; a fake curl that emits a shell
-    // script lets the real pipeline run without touching the network.
-    writeFileSync(join(fake.dir, "curl"), "#!/bin/sh\necho 'echo INSTALLED'\n");
-    spawnSync("chmod", ["755", join(fake.dir, "curl")]);
+    // Only the prompt is asserted here. `wt update` no longer shells out to
+    // `curl ... | sh`, so there is no installer to fake: it downloads and
+    // verifies the release itself, and that is covered against a local server
+    // in update.test.ts. Installing wt-v99.0.0 for real is expected to fail,
+    // which is why no exit code is checked.
     const r = await runCli(BIN, ["update", "--yes"], { env: updateEnv(fake.dir) });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain("INSTALLED");
+    expect(r.stdout).toContain(`wt v${pkg.version} → v99.0.0`);
+    expect(r.stdout).not.toContain("install? [y/N]");
     expect(r.stdout).not.toContain("aborted");
-    const cache = readFileSync(join(fake.dir, "wt", "update-check"), "utf8");
-    expect(cache).toContain("wt-v99.0.0");
+    expect(r.stderr).not.toMatch(/no terminal/);
   });
 
   it("update rejects an unknown flag", async () => {
