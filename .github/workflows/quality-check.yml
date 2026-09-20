@@ -77,6 +77,65 @@ jobs:
           WT_VERSION=test PREFIX=/tmp/wt-install sh /tmp/install-patched.sh
           /tmp/wt-install/bin/wt --help
 
+      - name: update prompt works on a real terminal
+        run: |
+          # The confirm prompt reads /dev/tty, so only a pty exercises it --
+          # and a pty is the one thing `bun test` cannot give it. This guards
+          # the regression where wrapping those fds in tty.ReadStream/
+          # tty.WriteStream made `new WriteStream(fd)` throw EINVAL (kqueue)
+          # under Bun on macOS; the throw was swallowed and every user with a
+          # perfectly good terminal got a silent "aborted." instead of a
+          # question.
+          mkdir -p /tmp/fakebin
+          cat > /tmp/fakebin/gh <<'GH'
+          #!/bin/sh
+          case "$*" in
+            *releases/latest*) printf 'wt-v99.0.0\n'; exit 0 ;;
+          esac
+          exit 0
+          GH
+          # `wt update` installs via `curl ... | sh`; a fake curl that emits a
+          # shell script keeps the whole path hermetic and off the network.
+          cat > /tmp/fakebin/curl <<'CURL'
+          #!/bin/sh
+          echo 'echo INSTALLED'
+          CURL
+          chmod +x /tmp/fakebin/gh /tmp/fakebin/curl
+          export PATH="/tmp/fakebin:$PATH"
+          export XDG_STATE_HOME=/tmp/wt-update-state
+          export WT_NO_UPDATE_CHECK=1
+
+          # Answer "n" so nothing is installed -- the assertion that matters is
+          # that the question reached the terminal at all.
+          out=$(printf 'n\n' | script -q /dev/null ./dist/wt-darwin-arm64 update || true)
+          printf '%s\n' "$out"
+
+          case "$out" in
+            *"install? [y/N]"*) ;;
+            *) echo "FAIL: prompt never reached the terminal" >&2; exit 1 ;;
+          esac
+          case "$out" in
+            *aborted*) ;;
+            *) echo "FAIL: answering n did not abort" >&2; exit 1 ;;
+          esac
+          case "$out" in
+            *"no terminal"*) echo "FAIL: claimed no terminal on a real pty" >&2; exit 1 ;;
+          esac
+
+          # --yes must not ask, and must not need a terminal to proceed.
+          out=$(./dist/wt-darwin-arm64 update --yes < /dev/null 2>&1 || true)
+          printf '%s\n' "$out"
+          case "$out" in
+            *"install? [y/N]"*) echo "FAIL: --yes still prompted" >&2; exit 1 ;;
+          esac
+          case "$out" in
+            *"no terminal"*) echo "FAIL: --yes demanded a terminal" >&2; exit 1 ;;
+          esac
+          case "$out" in
+            *INSTALLED*) ;;
+            *) echo "FAIL: --yes did not reach the installer" >&2; exit 1 ;;
+          esac
+
   release-please-config:
     runs-on: ubuntu-latest
     steps:
