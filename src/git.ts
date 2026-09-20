@@ -92,9 +92,13 @@ export async function addWorktree(
   path: string,
 ): Promise<void> {
   const exists = await branchExists(root, branch);
+  // `--` fences the positionals off from git's own option parsing. Without it a
+  // path or branch that starts with a dash is read as a flag, and git obliges:
+  // `git worktree add --detach <path>` exits 0 having done something else
+  // entirely, rather than failing on an unknown branch.
   const args = exists
-    ? ["worktree", "add", path, branch]
-    : ["worktree", "add", "-b", branch, path];
+    ? ["worktree", "add", "--", path, branch]
+    : ["worktree", "add", "-b", branch, "--", path];
   const { code, stderr } = await runGit(root, args);
   if (code !== 0) throw new Error(stderr.trim() || `git worktree add exited ${code}`);
 }
