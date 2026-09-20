@@ -101,13 +101,7 @@ jobs:
           esac
           exit 0
           GH
-          # `wt update` installs via `curl ... | sh`; a fake curl that emits a
-          # shell script keeps the whole path hermetic and off the network.
-          cat > /tmp/fakebin/curl <<'CURL'
-          #!/bin/sh
-          echo 'echo INSTALLED'
-          CURL
-          chmod +x /tmp/fakebin/gh /tmp/fakebin/curl
+          chmod +x /tmp/fakebin/gh
           export PATH="/tmp/fakebin:$PATH"
           export XDG_STATE_HOME=/tmp/wt-update-state
           export WT_NO_UPDATE_CHECK=1
@@ -138,7 +132,12 @@ jobs:
           case "$out" in
             *"no terminal"*) echo "FAIL: --yes demanded a terminal" >&2; exit 1 ;;
           esac
+          # `wt update` downloads and verifies the release itself rather than
+          # piping an installer to sh, so there is no installer to fake here.
+          # wt-v99.0.0 does not exist, so the download is expected to fail --
+          # what this asserts is that --yes got as far as starting it. The
+          # download, checksum and replace steps are covered in update.test.ts.
           case "$out" in
-            *INSTALLED*) ;;
+            *"installing wt wt-v99.0.0"*) ;;
             *) echo "FAIL: --yes did not reach the installer" >&2; exit 1 ;;
           esac
