@@ -73,6 +73,27 @@ export async function listAgents(env: Env): Promise<AgentSession[]> {
   }
 }
 
+/**
+ * Strip control characters from a value before it goes into a terminal row.
+ *
+ * `parseAgents` passes `name`/`status` through verbatim on purpose, and worktree
+ * paths can hold arbitrary bytes, so `wt list`'s plain-text rows would otherwise
+ * hand raw control bytes to the emulator: a `\r` lets a crafted status rewrite
+ * the row above it (forging another worktree's agent state), and OSC/CSI escapes
+ * reach the terminal directly. Tabs and newlines go too — `wt` emits its own
+ * tabs as column delimiters and one row per line, so either one *inside* a value
+ * is corruption that silently breaks a downstream `cut`/`awk`, not structure.
+ * C1 (U+0080–U+009F) is included because 8-bit CSI is still honoured by some
+ * terminals and nothing legitimately displayable lives there.
+ *
+ * Display-only: `wt list --json` must not use this. `JSON.stringify` already
+ * escapes these characters safely, and stripping there would quietly corrupt
+ * values a consumer asked for verbatim.
+ */
+export function stripControlChars(s: string): string {
+  return s.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
+
 function normalize(p: string): string {
   try {
     return realpathSync(p);

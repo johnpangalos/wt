@@ -3,7 +3,12 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseAgents, matchAgents, listAgents } from "../src/agents";
+import {
+  parseAgents,
+  matchAgents,
+  listAgents,
+  stripControlChars,
+} from "../src/agents";
 import { fakeClaudeBin } from "./helpers";
 
 describe("agents.parseAgents", () => {
@@ -117,5 +122,32 @@ describe("agents.listAgents", () => {
     fakeClaudeBin(dir, "not json at all");
     const agents = await listAgents({ PATH: `${dir}:/bin:/usr/bin`, HOME: process.env.HOME });
     expect(agents).toEqual([]);
+  });
+});
+
+describe("agents.stripControlChars", () => {
+  it("removes C0 controls, DEL, and C1", () => {
+    expect(stripControlChars("a\u0000b\u001fc\u007fd\u0080e\u009ff")).toBe("abcdef");
+  });
+
+  it("removes tab and newline, which are wt's own row structure", () => {
+    expect(stripControlChars("col\u0009umn\u000arow\u000d")).toBe("columnrow");
+  });
+
+  it("keeps the printable characters either side of each boundary", () => {
+    expect(stripControlChars(" ~")).toBe(" ~");
+    expect(stripControlChars("\u00a0")).toBe("\u00a0");
+    expect(stripControlChars("brave-otter")).toBe("brave-otter");
+    expect(stripControlChars("waiting (permission prompt)")).toBe(
+      "waiting (permission prompt)",
+    );
+  });
+
+  it("strips the escape byte out of an OSC sequence", () => {
+    expect(stripControlChars("\u001b]1337;X=y\\evil")).toBe("]1337;X=y\\evil");
+  });
+
+  it("leaves an empty string alone", () => {
+    expect(stripControlChars("")).toBe("");
   });
 });
