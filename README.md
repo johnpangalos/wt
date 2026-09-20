@@ -14,15 +14,33 @@ Designed for workflows that create worktrees elsewhere (Claude Code, scripts, an
 
 ## Install
 
-macOS (Apple Silicon):
+macOS (Apple Silicon). Download the release binary, check it against the release's `SHA256SUMS`, and install it:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh | sh
+tag=$(gh api repos/johnpangalos/wt/releases/latest --jq .tag_name)
+base=https://github.com/johnpangalos/wt/releases/download/$tag
+curl -fsSL -O "$base/wt-darwin-arm64" -O "$base/SHA256SUMS"
+shasum -a 256 -c --ignore-missing SHA256SUMS   # must print: wt-darwin-arm64: OK
+install -m 755 wt-darwin-arm64 ~/.local/bin/wt
 ```
 
-Installs to `~/.local/bin/wt`. Override with `PREFIX=/usr/local`.
+Don't skip the `shasum` line — install only if it prints `OK`. And note what a checksum does and does not prove: that the bytes arrived intact from the release, not that the release is authentic. Whoever can publish a release can publish a matching `SHA256SUMS`.
 
-Resolving the latest release uses the [GitHub CLI](https://cli.github.com), so `gh` must be installed and authenticated (`gh auth login`) — this avoids the unauthenticated API rate limit that otherwise surfaces as a `403`. To install without `gh`, pin a version with `WT_VERSION=v0.1.0`, which skips the release lookup entirely.
+Resolving the latest tag uses the [GitHub CLI](https://cli.github.com), so `gh` must be installed and authenticated (`gh auth login`) — this avoids the unauthenticated API rate limit that otherwise surfaces as a `403`. Without `gh`, set `tag` by hand from the [releases page](https://github.com/johnpangalos/wt/releases); tags look like `wt-v0.5.1`.
+
+### With the install script
+
+[`install.sh`](install.sh) does the same four steps — resolve the tag, download, verify the checksum, install to `$PREFIX/bin` — in one command. Fetch it, read it, then run it:
+
+```sh
+curl -fsSL -O https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh
+less install.sh                          # read it before you run it
+sh install.sh                            # installs to ~/.local/bin/wt
+WT_VERSION=v0.1.0 sh install.sh          # pin a version (skips the gh lookup)
+PREFIX=/usr/local sh install.sh          # install somewhere else
+```
+
+Piping it straight into `sh` would execute whatever `main` serves at that moment, unread. The two-step above costs one extra command and lets you see what you're about to run — so that's the form documented here.
 
 On first run, macOS may quarantine the unsigned binary. Clear it with:
 
