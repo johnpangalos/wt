@@ -232,6 +232,32 @@ invocation with `wt`'s own message, candidate worktrees included, and costs no
 model turn at all. The `allowed-tools` grant covers `wt` so the injected command
 never hits a permission prompt.
 
+### Running inside a sandbox
+
+Apple Events don't cross a sandbox boundary. Claude Code's Bash sandbox denies
+the LaunchServices XPC service `com.apple.hiservices-xpcservice`, so `osascript`
+can't resolve the Ghostty target and AppleScript reports `Ghostty got an error:
+Application isn't running. (-600)` — even with Ghostty open in front of you. The
+app state is a red herring, and no amount of starting Ghostty first helps: `wt`
+recognizes that signature and says so instead of forwarding the raw osascript
+noise.
+
+The fix is to run `wt` outside the sandbox. In Claude Code, add it to
+`sandbox.excludedCommands` in `~/.claude/settings.json`:
+
+```json
+{
+  "sandbox": { "excludedCommands": ["wt:*"] },
+  "permissions": { "allow": ["Bash(wt:*)"] }
+}
+```
+
+The `:*` suffix is what makes the entry a prefix match. A bare `"wt"` is an
+exact match — it covers `wt` alone, while `wt switch feat` still runs sandboxed
+and still fails. The `permissions` entry keeps the now-unsandboxed command from
+prompting, since `autoAllowBashIfSandboxed` only covers commands that stay
+inside the sandbox.
+
 The skill deliberately sets neither `model:` nor `effort:`. Claude Code applies
 both to the rest of the turn that invoked the skill — including when Claude
 invokes it itself mid-task — so a worktree opened halfway through a job would

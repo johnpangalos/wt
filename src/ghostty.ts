@@ -106,6 +106,32 @@ export function isBenignGhosttyError(stderr: string): boolean {
   return /\(-1708\)/.test(stderr) && /Can.t continue/.test(stderr);
 }
 
+/**
+ * Whether an osascript failure means this process may not send Apple Events.
+ *
+ * A Seatbelt sandbox that denies the LaunchServices XPC service
+ * (`com.apple.hiservices-xpcservice`) — Claude Code's Bash sandbox is one —
+ * leaves osascript unable to resolve the Ghostty target at all, so AppleScript
+ * reports `Application isn't running. (-600)` (or a `-10810` launch failure)
+ * even while Ghostty is running in front of you. The app state is a red
+ * herring: nothing `wt` does from inside such a process can reach Ghostty, so
+ * say so instead of passing the raw osascript noise along.
+ */
+export function isBlockedAppleEventError(stderr: string): boolean {
+  const blocked =
+    /hiservices-xpcservice/.test(stderr) || /Connection invalid/i.test(stderr);
+  return blocked && /\(-(?:600|10810)\)/.test(stderr);
+}
+
+export const BLOCKED_APPLE_EVENT_MESSAGE =
+  "can't reach Ghostty: this process may not send Apple Events, so " +
+  "osascript reports Ghostty as not running even when it is.\n" +
+  "That's a sandbox restriction rather than a Ghostty problem — wt has to " +
+  "run outside the sandbox.\n" +
+  'In Claude Code, add "wt:*" to sandbox.excludedCommands in ' +
+  '~/.claude/settings.json — the `:*` matters, since a bare "wt" entry only ' +
+  "matches `wt` with no arguments.";
+
 export async function spawnGhostty(argv: string[]): Promise<void> {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new Error("empty ghostty argv");
@@ -115,6 +141,8 @@ export async function spawnGhostty(argv: string[]): Promise<void> {
   if (code !== 0) {
     const msg = stderr.trim();
     if (isBenignGhosttyError(msg)) return;
+    if (isBlockedAppleEventError(msg))
+      throw new Error(BLOCKED_APPLE_EVENT_MESSAGE);
     throw new Error(msg || `${cmd} exited ${code}`);
   }
 }

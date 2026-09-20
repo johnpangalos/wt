@@ -4,6 +4,7 @@ import {
   buildGhosttyCmd,
   absolutizeCmd,
   isBenignGhosttyError,
+  isBlockedAppleEventError,
 } from "../src/ghostty";
 
 const args = { path: "/r/feat", cmd: "nvim" };
@@ -111,6 +112,43 @@ describe("ghostty.isBenignGhosttyError", () => {
       ),
     ).toBe(false);
     expect(isBenignGhosttyError("osascript: command not found")).toBe(false);
+  });
+});
+
+describe("ghostty.isBlockedAppleEventError", () => {
+  const sandboxed = [
+    "2026-09-20 13:32:13.791 osascript[8317:1018530] Connection Invalid error for service com.apple.hiservices-xpcservice.",
+    "2026-09-20 13:32:13.791 osascript[8317:1018528] Error received in message reply handler: Connection invalid",
+    "29:37: execution error: Ghostty got an error: Application isn\u2019t running. (-600)",
+  ].join("\n");
+
+  it("detects a sandbox blocking Apple Events", () => {
+    expect(isBlockedAppleEventError(sandboxed)).toBe(true);
+  });
+
+  it("detects the -10810 launch failure with the same XPC signature", () => {
+    expect(
+      isBlockedAppleEventError(
+        "osascript[1:2] Connection Invalid error for service com.apple.hiservices-xpcservice.\n40:44: execution error: An error of type -10810 has occurred. (-10810)",
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves a plain -600 alone when nothing was blocked", () => {
+    expect(
+      isBlockedAppleEventError(
+        "execution error: Ghostty got an error: Application isn\u2019t running. (-600)",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not claim Ghostty's benign -1708 quirk", () => {
+    expect(
+      isBlockedAppleEventError(
+        "execution error: Ghostty got an error: Can't continue new tab. (-1708)",
+      ),
+    ).toBe(false);
+    expect(isBlockedAppleEventError("osascript: command not found")).toBe(false);
   });
 });
 
