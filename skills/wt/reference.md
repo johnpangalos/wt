@@ -68,6 +68,11 @@ branch name into a shell command unquoted.
 - If `wt` isn't on `PATH`, it isn't installed. Don't install it yourself — point
   the user at the install instructions in the
   [README](https://github.com/johnpangalos/wt#install) and let them run them.
+- Apple Events don't cross a sandbox boundary. If `wt` reports that it may not
+  send Apple Events, it is running inside a sandbox (Claude Code's Bash sandbox
+  denies the Apple Event XPC service) and Ghostty is unreachable no matter what
+  state Ghostty is in. Pass `wt`'s message on to the user — the fix is `"wt:*"`
+  in `sandbox.excludedCommands` in their settings — and don't retry the command.
 - `wt` checks GitHub for a newer release in the background and only caches the
   result; it never installs anything on its own. `wt update` installs, and
   prompts for confirmation first. `WT_NO_UPDATE_CHECK` turns the check off.

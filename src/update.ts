@@ -1,7 +1,13 @@
-import { readFileSync, writeFileSync, mkdirSync, openSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  writeSync,
+  closeSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
-import { ReadStream, WriteStream } from "node:tty";
-import { createInterface } from "node:readline/promises";
 import { $ } from "bun";
 import pkg from "../package.json";
 
@@ -26,6 +32,35 @@ function cachePath(env: UpdateEnv): string | null {
 
 type CacheEntry = { ts: number; tag: string };
 
+/** Longest tag we'll believe. Real tags are like "wt-v0.5.0" — 64 is generous. */
+const MAX_TAG_LEN = 64;
+
+/**
+ * Characters a release tag may contain. Covers every shape `stripV` knows
+ * ("wt-v0.5.0", "v0.5.0", "0.5.0") while excluding control bytes, escape
+ * sequences, and whitespace.
+ */
+const TAG_RE = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Read the update-check cache, treating its contents as untrusted input.
+ *
+ * The cache lives under `$XDG_STATE_HOME` (or `$HOME`), and `maybeNag` prints
+ * the tag it holds straight to the terminal on every `wt` invocation. If that
+ * directory is ever group- or world-writable, whoever can write the file gets
+ * to choose bytes our stderr emits — an escape-sequence injection, and an
+ * unbounded-length one. It's a narrow, local scenario that needs an unusual
+ * `XDG_STATE_HOME`, but validating a short version string costs nothing, so we
+ * do it rather than trust the file.
+ *
+ * Anything that fails validation — bad shape, a tag with control characters, an
+ * over-long tag, a negative or far-future timestamp — is reported as `null`,
+ * same as a missing file. `maybeNag` reads `null` as "no usable cache" and
+ * spawns a background refresh, so a corrupt or poisoned entry is overwritten on
+ * the next run instead of sticking around. A far-future `ts` is worth rejecting
+ * for its own sake: left alone it keeps `now - ts < DAY_MS` true forever and
+ * would freeze the update check permanently.
+ */
 function readCache(p: string): CacheEntry | null {
   try {
     const raw = readFileSync(p, "utf8").trim();
@@ -33,7 +68,8 @@ function readCache(p: string): CacheEntry | null {
     if (idx < 0) return null;
     const ts = Number(raw.slice(0, idx));
     const tag = raw.slice(idx + 1).trim();
-    if (!Number.isFinite(ts) || !tag) return null;
+    if (!Number.isInteger(ts) || ts < 0 || ts > Date.now() + DAY_MS) return null;
+    if (!tag || tag.length > MAX_TAG_LEN || !TAG_RE.test(tag)) return null;
     return { ts, tag };
   } catch {
     return null;
@@ -118,30 +154,71 @@ export function maybeNag(env: UpdateEnv): void {
   }
 }
 
-async function promptYes(): Promise<boolean> {
-  let input: ReadStream | null = null;
-  let output: WriteStream | null = null;
+/**
+ * Three outcomes, not two. `wt update` runs plenty of places that have no
+ * controlling terminal — a Claude Code Bash call, a CI step, anything behind a
+ * pipe — and there `open("/dev/tty")` fails with ENXIO. Folding that into a
+ * plain `false` made an unanswerable prompt look exactly like a declined one:
+ * the version line, then "aborted.", exit 0, and no hint of which happened.
+ * Callers need the distinction so they can point at `--yes` instead.
+ */
+type Confirmation = "yes" | "no" | "no-tty";
+
+/**
+ * Ask on the terminal, not on stdio, so the prompt still works when stdout is
+ * a pipe. We talk to the `/dev/tty` file descriptors directly rather than
+ * wrapping them in `tty.ReadStream`/`tty.WriteStream`: under Bun on macOS,
+ * `new WriteStream(fd)` on a tty fd throws `EINVAL: invalid argument, kqueue`,
+ * which the old catch-all turned into a silent "aborted." for every user with
+ * a perfectly good terminal. A blocking `readSync` is all a y/N question
+ * needs, and it has no such failure mode.
+ *
+ * The tty stays in canonical mode, so the kernel echoes what's typed and hands
+ * back one line per read; 64 bytes is far more than "yes" and anything longer
+ * is not an answer we'd accept anyway.
+ */
+function promptYes(): Confirmation {
+  let rfd: number | null = null;
+  let wfd: number | null = null;
   try {
-    input = new ReadStream(openSync("/dev/tty", "r"));
-    output = new WriteStream(openSync("/dev/tty", "w"));
+    rfd = openSync("/dev/tty", "r");
+    wfd = openSync("/dev/tty", "w");
   } catch {
-    input?.destroy();
-    output?.destroy();
-    return false;
+    if (rfd !== null) closeSync(rfd);
+    return "no-tty";
   }
-  const rl = createInterface({ input, output });
   try {
-    const answer = await rl.question("install? [y/N] ");
-    const trimmed = answer.trim().toLowerCase();
-    return trimmed === "y" || trimmed === "yes";
+    writeSync(wfd, "install? [y/N] ");
+    const buf = Buffer.alloc(64);
+    const n = readSync(rfd, buf, 0, buf.length, null);
+    const answer = buf.toString("utf8", 0, n).trim().toLowerCase();
+    return answer === "y" || answer === "yes" ? "yes" : "no";
+  } catch {
+    // The terminal opened but would not talk to us. We cannot claim the user
+    // declined, so report it the same way as having no terminal at all.
+    return "no-tty";
   } finally {
-    rl.close();
-    input.destroy();
-    output.destroy();
+    closeSync(rfd);
+    closeSync(wfd);
   }
 }
 
-export async function cmdUpdate(env: UpdateEnv): Promise<number> {
+export async function cmdUpdate(
+  env: UpdateEnv,
+  args: string[] = [],
+): Promise<number> {
+  let assumeYes = false;
+  for (const arg of args) {
+    if (arg === "-y" || arg === "--yes") {
+      assumeYes = true;
+      continue;
+    }
+    process.stderr.write(
+      `wt: unknown flag for update: ${arg} (try: wt --help)\n`,
+    );
+    return 1;
+  }
+
   let tag: string;
   try {
     tag = await fetchLatestTag();
@@ -166,9 +243,18 @@ export async function cmdUpdate(env: UpdateEnv): Promise<number> {
     return 0;
   }
   process.stdout.write(`wt v${VERSION} → v${latest}\n`);
-  if (!(await promptYes())) {
-    process.stdout.write("aborted.\n");
-    return 0;
+  if (!assumeYes) {
+    const answer = promptYes();
+    if (answer === "no-tty") {
+      process.stderr.write(
+        "wt: no terminal to confirm on — re-run with: wt update --yes\n",
+      );
+      return 1;
+    }
+    if (answer === "no") {
+      process.stdout.write("aborted.\n");
+      return 0;
+    }
   }
 
   const binDir = dirname(process.execPath);

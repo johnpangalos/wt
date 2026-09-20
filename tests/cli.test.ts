@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from "bun:test";
 import { basename, join, resolve } from "node:path";
-import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
@@ -832,5 +832,110 @@ describe("cli: version and update", () => {
     });
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toBe("");
+  });
+
+  // The cache lives wherever $XDG_STATE_HOME points, and its tag is printed to
+  // the terminal on every invocation — so a malformed entry must never reach
+  // stderr verbatim. `nagWithCachedTag` writes one and runs `wt --help` with an
+  // empty PATH, so the background refresh the rejection triggers finds no `gh`
+  // and dies quietly instead of reaching the network.
+  async function nagWithCachedTag(tag: string, ts: number = Date.now()) {
+    const stateDir = mkdtempSync(join(tmpdir(), "wt-state-"));
+    mkdirSync(join(stateDir, "wt"), { recursive: true });
+    writeFileSync(join(stateDir, "wt", "update-check"), `${ts}\t${tag}\n`);
+    const empty = fakeBin([]);
+    return runCli(BIN, ["--help"], {
+      env: {
+        PATH: empty.dir,
+        HOME: process.env.HOME ?? "",
+        XDG_STATE_HOME: stateDir,
+        WT_NO_UPDATE_CHECK: "",
+      },
+    });
+  }
+
+  it("nag rejects a cached tag carrying control characters", async () => {
+    // Both payloads claim major version 99, so an unvalidated cache would
+    // consider them newer and print them.
+    for (const tag of [
+      "wt-v99.0.0\x1b[31mPWNED\x1b[0m",
+      "wt-v99.0.0\nwt: totally legitimate second line",
+    ]) {
+      const r = await nagWithCachedTag(tag);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).not.toMatch(/update available/);
+      expect(r.stderr).not.toContain("\x1b");
+      expect(r.stderr).not.toContain("PWNED");
+      expect(r.stderr).not.toContain("second line");
+    }
+  });
+
+  it("nag rejects an over-long cached tag", async () => {
+    const r = await nagWithCachedTag(`wt-v${"9".repeat(80)}`);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toMatch(/update available/);
+    expect(r.stderr).not.toContain("999");
+  });
+
+  it("nag rejects a far-future cached timestamp", async () => {
+    const r = await nagWithCachedTag("wt-v99.0.0", Date.now() + 365 * 24 * 60 * 60 * 1000);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toMatch(/update available/);
+  });
+
+  it("nag still fires for a well-formed cached tag", async () => {
+    const r = await nagWithCachedTag("wt-v99.0.0");
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toMatch(/update available/);
+    expect(r.stderr).toContain("99.0.0");
+    expect(r.stderr).not.toContain("\x1b");
+  });
+
+  /**
+   * `runCli` spawns with piped stdio and no controlling terminal, which is
+   * exactly the shape that used to print "aborted." and exit 0 — a refusal
+   * indistinguishable from answering "n".
+   */
+  function updateEnv(dir: string): Record<string, string> {
+    return {
+      PATH: `${dir}:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin`,
+      HOME: process.env.HOME ?? "",
+      XDG_STATE_HOME: dir,
+      WT_NO_UPDATE_CHECK: "1",
+    };
+  }
+
+  it("update says so, and how to proceed, when there is no terminal", async () => {
+    const fake = fakeBin([]);
+    fakeGhBin(fake.dir, "wt-v99.0.0");
+    const r = await runCli(BIN, ["update"], { env: updateEnv(fake.dir) });
+    expect(r.stdout).toContain(`wt v${pkg.version} → v99.0.0`);
+    expect(r.stdout).not.toContain("aborted");
+    expect(r.stderr).toMatch(/no terminal/);
+    expect(r.stderr).toContain("--yes");
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("update --yes installs without a prompt and records the new tag", async () => {
+    const fake = fakeBin([]);
+    fakeGhBin(fake.dir, "wt-v99.0.0");
+    // The installer is `curl -fsSL <url> | sh`; a fake curl that emits a shell
+    // script lets the real pipeline run without touching the network.
+    writeFileSync(join(fake.dir, "curl"), "#!/bin/sh\necho 'echo INSTALLED'\n");
+    spawnSync("chmod", ["755", join(fake.dir, "curl")]);
+    const r = await runCli(BIN, ["update", "--yes"], { env: updateEnv(fake.dir) });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("INSTALLED");
+    expect(r.stdout).not.toContain("aborted");
+    const cache = readFileSync(join(fake.dir, "wt", "update-check"), "utf8");
+    expect(cache).toContain("wt-v99.0.0");
+  });
+
+  it("update rejects an unknown flag", async () => {
+    const fake = fakeBin([]);
+    fakeGhBin(fake.dir, "wt-v99.0.0");
+    const r = await runCli(BIN, ["update", "--force"], { env: updateEnv(fake.dir) });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/unknown flag/);
   });
 });

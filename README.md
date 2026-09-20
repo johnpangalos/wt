@@ -190,11 +190,11 @@ to find or cache. If Ghostty isn't open, `activate` launches it.
 ## Agent skill (Claude Code & friends)
 
 `wt` ships an [agent skill](skills/wt/SKILL.md) that teaches coding agents when
-and how to use the CLI (e.g. run `wt switch -c <branch>` so a Ghostty tab pops
-open for you). It's deliberately small — the everyday commands live in
-`SKILL.md` (~280 tokens), while placement flags, env vars, output formats, and
-platform constraints sit in [`reference.md`](skills/wt/reference.md), which an
-agent only reads when it needs them. Install it with Vercel's
+and how to use the CLI. It's deliberately small — the description carries the
+everyday commands, `SKILL.md` is a few lines, and placement flags, env vars,
+output formats, and platform constraints sit in
+[`reference.md`](skills/wt/reference.md), which an agent only reads when it
+needs them. Install it with Vercel's
 [`skills` CLI](https://github.com/vercel-labs/skills):
 
 ```sh
@@ -216,14 +216,76 @@ directory, e.g. for Claude Code:
 cp -R skills/wt ~/.claude/skills/wt
 ```
 
-In Claude Code the skill is also user-invocable as `/wt`. Typical flow:
+### What an invocation costs in Claude Code
 
-```
-$ wt switch -c feat
+The skill is user-invocable as `/wt`, and it runs the command for you. `SKILL.md`
+contains the line `` !`wt $ARGUMENTS` ``, which Claude Code expands *before* the
+model sees the skill: `/wt switch feat` (or Claude calling the skill with
+`switch feat`) runs `wt switch feat` during rendering, so the Ghostty tab is
+already open and the output is already in the prompt. The model's only job is to
+say what happened — one short turn, no tool call, no round trip. Without the
+injected line an invocation costs two model turns plus a Bash call: load the
+skill, compose the command, wait for the result, then reply.
+
+A failed run (ambiguous or unknown branch, `wt` not installed) aborts the
+invocation with `wt`'s own message, candidate worktrees included, and costs no
+model turn at all. The `allowed-tools` grant covers `wt` so the injected command
+never hits a permission prompt.
+
+### Running inside a sandbox
+
+Apple Events don't cross a sandbox boundary. Claude Code's Bash sandbox denies
+the LaunchServices XPC service `com.apple.hiservices-xpcservice`, so `osascript`
+can't resolve the Ghostty target and AppleScript reports `Ghostty got an error:
+Application isn't running. (-600)` — even with Ghostty open in front of you. The
+app state is a red herring, and no amount of starting Ghostty first helps: `wt`
+recognizes that signature and says so instead of forwarding the raw osascript
+noise.
+
+The fix is to run `wt` outside the sandbox. In Claude Code, add it to
+`sandbox.excludedCommands` in `~/.claude/settings.json`:
+
+```json
+{
+  "sandbox": { "excludedCommands": ["wt:*"] },
+  "permissions": { "allow": ["Bash(wt:*)"] }
+}
 ```
 
-A new Ghostty tab pops open (Ghostty comes to the front) with your editor at
-the worktree's path.
+The `:*` suffix is what makes the entry a prefix match. A bare `"wt"` is an
+exact match — it covers `wt` alone, while `wt switch feat` still runs sandboxed
+and still fails. The `permissions` entry keeps the now-unsandboxed command from
+prompting, since `autoAllowBashIfSandboxed` only covers commands that stay
+inside the sandbox.
+
+The skill deliberately sets neither `model:` nor `effort:`. Claude Code applies
+both to the rest of the turn that invoked the skill — including when Claude
+invokes it itself mid-task — so a worktree opened halfway through a job would
+leave the rest of that job running on the smaller model. If you only ever type
+`/wt` yourself, add these lines to the frontmatter of your installed copy and the
+one remaining turn runs on Haiku at low effort:
+
+```yaml
+model: haiku
+effort: low
+disable-model-invocation: true
+```
+
+`disable-model-invocation` is what makes the override safe: Claude can no longer
+call the skill on its own. It also drops the skill's description from Claude's
+context, so Claude won't know about `wt` unless you tell it.
+
+The floor is zero model turns, and it needs no skill: type `! wt switch feat`
+in Claude Code's shell mode. The command runs without going through Claude. By
+default Claude still replies to the output; set `"respondToBashCommands": false`
+in `settings.json` and it just lands in the transcript.
+
+A forked subagent (`context: fork` with `model: haiku`) is not cheaper. The
+subagent runs its own turn, and the main model still gets a turn to relay the
+result, so it adds a call rather than removing one.
+
+The `` !`…` `` line is a Claude Code feature. Other agents installed via `skills`
+receive it as literal text; the skill's prose tells them to run `wt` themselves.
 
 ## Development
 
