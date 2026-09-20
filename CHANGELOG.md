@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.1](https://github.com/johnpangalos/wt/compare/wt-v0.5.0...wt-v0.5.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* explain the sandbox Apple Event block instead of osascript noise ([#58](https://github.com/johnpangalos/wt/issues/58)) ([0ba46fe](https://github.com/johnpangalos/wt/commit/0ba46fecc4387a174c91344777b63225b5391b29))
+* pass -- to git worktree add and reject option-like switch targets ([#54](https://github.com/johnpangalos/wt/issues/54)) ([b8279a3](https://github.com/johnpangalos/wt/commit/b8279a3d421e4a9af3fad402f0e70bce462b1fb3))
+* strip control characters from wt list plain-text rows ([#55](https://github.com/johnpangalos/wt/issues/55)) ([2f63286](https://github.com/johnpangalos/wt/commit/2f6328607bd0ded780a54b767d6dc93d22cdb854))
+* **update:** confirm prompt never appears — node:tty WriteStream throws under Bun ([#59](https://github.com/johnpangalos/wt/issues/59)) ([6bcfdd2](https://github.com/johnpangalos/wt/commit/6bcfdd24bdb5648de6c726419bc57f1478105d73))
+* **update:** verify and install the release binary in-app instead of running a remote script ([#53](https://github.com/johnpangalos/wt/issues/53)) ([4c3e4ee](https://github.com/johnpangalos/wt/commit/4c3e4ee5ff46b715e6c744ae443cc898b22e80e2))
+* validate the update-check cache before printing its tag ([#52](https://github.com/johnpangalos/wt/issues/52)) ([f6d688f](https://github.com/johnpangalos/wt/commit/f6d688f3032fccd76e6de8a634722060e2d98cb2))
+
+
+### Performance Improvements
+
+* **skill:** run wt during skill render instead of a model-driven Bash call ([#57](https://github.com/johnpangalos/wt/issues/57)) ([d67d81a](https://github.com/johnpangalos/wt/commit/d67d81ac2d2ba27e8fea069c4e301c714229e4a5))
+
 ## [0.5.0](https://github.com/johnpangalos/wt/compare/wt-v0.4.0...wt-v0.5.0) (2026-08-14)
 
 
