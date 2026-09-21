@@ -1,7 +1,7 @@
 #!/bin/sh
 # wt installer (POSIX sh)
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/johnpangalos/wt/main/install.sh | sh
+# Usage: download this file, read it, then run it — don't pipe it into a shell.
+#   sh install.sh                          # install the latest release
 #   WT_VERSION=v0.1.0 sh install.sh        # pin a version
 #   PREFIX=/usr/local sh install.sh        # install to /usr/local/bin
 
